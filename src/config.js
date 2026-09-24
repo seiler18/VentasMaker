@@ -8,7 +8,7 @@
    Mientras esté vacía, la tienda funciona en MODO DEMO con la semilla de
    public/data/catalogo.json, y el panel de administración avisa de que no
    hay backend. */
-export const API_URL = ''
+export const API_URL = 'https://script.google.com/macros/s/AKfycbx51GZPYdjC8p0RDV0nBDel1VunKGk-xuU0uFaSUZBH54AmGgWH55JK7kLeqr_ysfj_Zw/exec'
 
 /* Datos de la tienda por defecto. Con backend, los de la hoja Config mandan. */
 export const TIENDA = {
