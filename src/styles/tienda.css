@@ -1,179 +1,478 @@
+/* ============================================================
+   CATÁLOGO PÚBLICO
+   Corte principal a 1100px: por encima, el carrito es un panel fijo a la
+   derecha y la rejilla usa todo el ancho restante; por debajo, botón
+   flotante. El mismo corte está en src/tienda/main.js (ESCRITORIO).
+   ============================================================ */
+
 /* ----- Cabecera ----- */
 .cabecera { background: var(--surface); border-bottom: 1px solid var(--borde); }
 .portada {
-  height: clamp(120px, 28vw, 260px);
+  height: clamp(130px, 22vw, 300px);
   background: var(--degradado) center / cover no-repeat;
   background-image: url('/img/portada.webp');
 }
 .cabecera-info {
-  display: flex; gap: 16px; align-items: flex-start;
-  padding: 12px 0 16px;
+  display: flex; gap: 20px; align-items: flex-start;
+  padding: 14px var(--margen) 18px;
 }
 .logo {
-  width: 96px; height: 96px; border-radius: 50%;
-  border: 4px solid var(--surface); box-shadow: var(--sombra-suave);
-  background: var(--surface); object-fit: cover; flex: none;
+  width: 104px; height: 104px; border-radius: 50%; flex: none;
+  border: 4px solid var(--surface); box-shadow: var(--sombra);
+  background: var(--surface); object-fit: cover;
   /* Solo el logo monta sobre el banner; el texto queda debajo, sobre blanco. */
-  margin-top: -52px;
+  margin-top: -58px;
+  transition: transform var(--lento) var(--curva-rebote);
 }
-.cabecera-texto { display: grid; gap: 6px; min-width: 0; }
+@media (hover: hover) { .logo:hover { transform: rotate(-6deg) scale(1.05); } }
+.cabecera-texto { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+/* minmax(0, 1fr) y no la columna automática: con la dirección en una sola
+   línea (móvil), la columna automática se estiraba al largo del texto y el
+   teléfono alejaba el zoom de TODA la página para que cupiera. */
 .cabecera-texto h1 { font-size: var(--txt-t2); }
-.cabecera-datos { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 0; font-size: var(--txt-menudo); color: var(--texto-tenue); }
+.cabecera-datos { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 0; font-size: var(--txt-menudo); color: var(--texto-tenue); }
 .dato { display: inline-flex; align-items: center; gap: 4px; }
+.estado {
+  display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 10px;
+  border-radius: var(--radio-pildora); font-weight: 600;
+}
+.estado.abierto { background: var(--ok-tenue); color: var(--ok); }
+.estado.cerrado { background: var(--error-tenue); color: var(--error); }
+.punto { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.abierto .punto { animation: latido var(--ciclo-latido) var(--curva-suave) infinite; }
+@keyframes latido {
+  0% { box-shadow: 0 0 0 0 var(--ok-halo); }
+  70%, 100% { box-shadow: 0 0 0 8px transparent; }
+}
 .enlace-horario {
-  justify-self: start; background: none; border: 0; padding: 0; cursor: pointer;
-  color: var(--primario); font-size: var(--txt-menudo); font-weight: 600; text-decoration: underline;
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: 0; padding: 4px 0; cursor: pointer;
+  color: var(--primario); font-size: var(--txt-menudo); font-weight: 600;
+}
+.enlace-horario .icono { width: 1em; height: 1em; }
+@media (hover: hover) { .enlace-horario:hover { text-decoration: underline; } }
+
+/* ----- Cuerpo: catálogo + panel del carrito ----- */
+.tienda-cuerpo { padding: 0 var(--margen); }
+.catalogo { min-width: 0; }
+.panel-carrito { display: none; }
+
+@media (min-width: 1100px) {
+  .tienda-cuerpo {
+    display: grid; grid-template-columns: minmax(0, 1fr) var(--carrito-w);
+    gap: 28px; align-items: start;
+  }
+  .panel-carrito {
+    display: flex; flex-direction: column;
+    position: sticky; top: 16px; margin-top: 16px;
+    max-height: calc(100dvh - 32px);
+    background: var(--surface); border: 1px solid var(--borde); border-radius: var(--radio);
+    box-shadow: var(--sombra-suave); overflow: hidden;
+  }
 }
 
-/* ----- Filtros ----- */
+/* ----- Filtros (fijos arriba al hacer scroll) ----- */
 .barra-filtros {
   position: sticky; top: 0; z-index: var(--z-barra);
-  background: var(--barra-fondo); backdrop-filter: blur(10px);
+  margin: 0 calc(-1 * var(--margen)); padding: 12px var(--margen) 10px;
+  background: var(--barra-fondo); backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--borde);
-  padding: 12px 0 0;
+  display: grid; gap: 10px;
 }
-.filtros { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.buscador { position: relative; flex: 1 1 260px; }
-.buscador .icono { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--texto-tenue); }
-.buscador .entrada { padding-left: 44px; border-radius: var(--radio-pildora); }
-.filtros-fila { display: flex; gap: 8px; }
-.orden { width: auto; border-radius: var(--radio-pildora); }
-.vistas { display: flex; gap: 4px; }
-.vistas [aria-pressed="true"] { background: var(--primario-tenue-2); color: var(--primario); border-color: var(--borde-vivo); }
+@media (min-width: 1100px) {
+  /* Con el panel a la derecha, la barra no se extiende debajo de él. */
+  .barra-filtros { margin: 0; padding: 14px 0 10px; background: var(--bg); backdrop-filter: none; border-bottom: 0; }
+}
+.buscador { position: relative; }
+.buscador .icono { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--texto-tenue); pointer-events: none; }
+.buscador .entrada { padding-left: 46px; border-radius: var(--radio-pildora); min-height: 48px; background: var(--surface); }
 
-.categorias {
-  display: flex; gap: 8px; overflow-x: auto; padding: 12px 0;
-  scrollbar-width: none;
-}
-.categorias::-webkit-scrollbar { display: none; }
+/* En escritorio las categorías se reparten en varias líneas: así nunca
+   quedan cortadas. En móvil se deslizan en una fila (ver más abajo). */
+.categorias { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
+  display: inline-flex; align-items: center; gap: 6px;
   flex: none; min-height: 36px; padding: 0 14px;
   border: 1px solid var(--borde); border-radius: var(--radio-pildora);
   background: var(--surface); cursor: pointer; font-size: var(--txt-menudo); font-weight: 600;
-  transition: background var(--rapido) var(--curva-suave), border-color var(--rapido) var(--curva-suave);
+  transition: background var(--rapido) var(--curva-suave), border-color var(--rapido) var(--curva-suave),
+              color var(--rapido) var(--curva-suave), transform var(--rapido) var(--curva-salida);
+}
+.chip-n {
+  min-width: 22px; padding: 0 6px; border-radius: var(--radio-pildora);
+  background: var(--surface-2); color: var(--texto-tenue); font-size: var(--txt-micro); text-align: center;
+  transition: background var(--rapido) var(--curva-suave), color var(--rapido) var(--curva-suave);
 }
 .chip[aria-pressed="true"] { background: var(--primario); border-color: var(--primario); color: var(--texto-sobre-primario); }
-@media (hover: hover) { .chip:hover:not([aria-pressed="true"]) { border-color: var(--borde-vivo); } }
+.chip[aria-pressed="true"] .chip-n { background: var(--surface); color: var(--primario); }
+.chip:active { transform: scale(0.96); }
+@media (hover: hover) { .chip:hover:not([aria-pressed="true"]) { border-color: var(--borde-vivo); color: var(--primario); transform: translateY(var(--levanta)); } }
 
-.conteo { color: var(--texto-tenue); font-size: var(--txt-menudo); margin: 16px 0 10px; }
+.barra-orden {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 16px 0 12px; scroll-margin-top: 130px;
+}
+.conteo { margin: 0; color: var(--texto-tenue); font-size: var(--txt-menudo); font-weight: 600; }
+.orden-grupo { display: flex; gap: 8px; align-items: center; }
+.orden { width: auto; min-height: 40px; border-radius: var(--radio-pildora); font-size: var(--txt-ui); padding-block: 6px; }
+.vistas { display: flex; gap: 4px; }
+.vistas .btn { min-height: 40px; width: 40px; }
+.vistas [aria-pressed="true"] { background: var(--primario-tenue-2); color: var(--primario); border-color: var(--borde-vivo); }
 
-/* ----- Productos ----- */
+/* ----- Rejilla de productos ----- */
 .productos {
   list-style: none; margin: 0 0 40px; padding: 0;
-  display: grid; gap: 14px;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  display: grid; gap: 18px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--ficha-min), 1fr));
 }
+
 .producto {
+  position: relative;
+  display: flex; flex-direction: column;
   background: var(--surface); border: 1px solid var(--borde); border-radius: var(--radio);
-  overflow: hidden; display: flex; flex-direction: column;
-  transition: transform var(--medio) var(--curva-salida), box-shadow var(--medio) var(--curva-salida);
+  overflow: hidden;
+  transition: transform var(--medio) var(--curva-salida), box-shadow var(--medio) var(--curva-salida),
+              border-color var(--medio) var(--curva-suave);
 }
-@media (hover: hover) { .producto:hover { transform: translateY(var(--levanta)); box-shadow: var(--sombra); } }
+
+/* Entrada: sube y aparece, escalonada por --i (lo fija main.js). */
+.producto:not(.esqueleto) { opacity: 0; transform: translateY(18px); }
+.producto.visible {
+  opacity: 1; transform: none;
+  transition: opacity var(--lento) var(--curva-salida) calc(var(--i, 0) * var(--escalonado)),
+              transform var(--lento) var(--curva-salida) calc(var(--i, 0) * var(--escalonado)),
+              box-shadow var(--medio) var(--curva-salida), border-color var(--medio) var(--curva-suave);
+}
+
+/* Foto: caja cuadrada SIEMPRE. La imagen va en posición absoluta y la llena:
+   así una foto vertical y una horizontal miden lo mismo y el precio de todas
+   las tarjetas de una fila cae a la misma altura. (Con aspect-ratio sobre el
+   <button> no alcanza: un botón con contenido crece con su imagen.) */
+.producto-media { position: relative; aspect-ratio: 1 / 1; overflow: hidden; background: var(--surface-2); }
 .producto-foto {
-  position: relative; aspect-ratio: 1; padding: 0; border: 0; cursor: pointer;
-  background: var(--surface-2); display: grid; place-items: center;
+  position: absolute; inset: 0; padding: 0; border: 0; margin: 0; cursor: pointer;
+  background: transparent; display: block; width: 100%; height: 100%;
 }
-.producto-foto img { width: 100%; height: 100%; object-fit: cover; }
+.producto-foto img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+  transition: transform var(--lento) var(--curva-salida), filter var(--lento) var(--curva-suave);
+}
+.producto-foto .sin-foto { position: absolute; inset: 0; }
+.ver-detalle {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 36px 12px 12px; text-align: center;
+  background: var(--velo-foto); color: var(--texto-sobre-primario);
+  font-size: var(--txt-menudo); font-weight: 700; letter-spacing: var(--tracking-etiqueta); text-transform: uppercase;
+  opacity: 0; transform: translateY(10px);
+  transition: opacity var(--medio) var(--curva-salida), transform var(--medio) var(--curva-salida);
+  pointer-events: none;
+}
 .sin-foto { color: var(--texto-marca); display: grid; place-items: center; }
 .sin-foto .icono { width: 40px; height: 40px; }
-.sin-foto.chica { width: 56px; height: 56px; background: var(--surface-2); border-radius: var(--radio-sm); }
+.sin-foto.chica { width: 56px; height: 56px; background: var(--surface-2); border-radius: var(--radio-sm); flex: none; }
 .sin-foto.chica .icono { width: 24px; height: 24px; }
-/* Opaco: sobre una foto recargada el lavado translúcido de la etiqueta no se lee. */
-.sello { position: absolute; top: 8px; left: 8px; background: var(--surface); box-shadow: var(--sombra-suave); }
-.agotado .producto-foto img { filter: grayscale(0.8); opacity: 0.7; }
 
-.producto-info { padding: 12px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
-.producto-nombre { font-family: var(--fuente-texto); font-size: var(--txt-ui); font-weight: 600; line-height: var(--interlinea-titulo); }
+.sello {
+  position: absolute; top: 10px; left: 10px; z-index: 1;
+  padding: 4px 10px; border-radius: var(--radio-pildora);
+  background: var(--surface); color: var(--aviso); box-shadow: var(--sombra-suave);
+  font-size: var(--txt-micro); font-weight: 700; pointer-events: none;
+}
+.sello-agotado { background: var(--error); color: var(--texto-sobre-primario); }
+.agotado .producto-foto img { filter: grayscale(0.85); opacity: 0.65; }
+
+.producto-info { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+/* Alto FIJO del bloque nombre + detalle: lo que ocupan 2 líneas de nombre y
+   1 de detalle. El detalle va pegado al nombre (sin hueco cuando el nombre
+   cabe en una línea) y el espacio que sobra queda debajo, así el precio cae
+   a la misma altura en toda la fila. */
+.producto-texto {
+  --t-nombre: var(--txt-ui);
+  display: grid; align-content: start; gap: 2px;
+  min-height: calc(var(--t-nombre) * 2 * var(--interlinea-titulo) + var(--txt-menudo) * var(--interlinea-cuerpo) + 2px);
+}
+.producto-nombre {
+  font-family: var(--fuente-texto); font-size: var(--t-nombre); font-weight: 600;
+  line-height: var(--interlinea-titulo);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
 .producto-desc {
   margin: 0; color: var(--texto-tenue); font-size: var(--txt-menudo);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  white-space: pre-line;
+  line-height: var(--interlinea-cuerpo);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.producto-precio { margin: 4px 0 0; font-weight: 700; font-size: var(--txt-guia); color: var(--texto-fuerte); }
-.producto-precio.grande { font-size: var(--txt-t3); }
-.producto-accion { margin-top: auto; padding-top: 8px; }
-.agregar { width: 100%; }
-.texto-agotado { font-size: var(--txt-menudo); color: var(--error); font-weight: 600; }
+.producto-pie { margin-top: auto; padding-top: 8px; display: grid; gap: 10px; }
+.producto-precio {
+  margin: 0; font-weight: 800; font-size: var(--txt-guia); color: var(--texto-fuerte);
+  font-variant-numeric: tabular-nums; transition: color var(--medio) var(--curva-suave);
+}
+.producto-precio.grande { font-size: var(--txt-cifra); }
+.producto-accion { min-height: 36px; }
+.producto-accion.pop { animation: pop var(--medio) var(--curva-rebote); }
+@keyframes pop { 0% { transform: scale(0.9); } 100% { transform: scale(1); } }
 
+/* Botón Agregar con destello que lo recorre al pasar el puntero. */
+.agregar { width: 100%; position: relative; overflow: hidden; background: var(--degradado); }
+.agregar::after {
+  content: ''; position: absolute; inset: 0; background: var(--brillo-boton);
+  transform: translateX(-120%); transition: transform var(--lento) var(--curva-salida);
+}
+.texto-agotado { display: inline-flex; min-height: 36px; align-items: center; font-size: var(--txt-menudo); color: var(--error); font-weight: 700; }
 .paso { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.paso-n { min-width: 2ch; text-align: center; font-weight: 700; }
+.paso-n { min-width: 2ch; text-align: center; font-weight: 800; font-size: var(--txt-guia); color: var(--primario); }
 
-/* Vista de lista: foto pequeña a la izquierda, datos a la derecha. */
-.productos[data-vista="lista"] { grid-template-columns: 1fr; gap: 10px; }
+@media (hover: hover) {
+  .producto:hover {
+    transform: translateY(var(--levanta-ficha));
+    box-shadow: var(--sombra-viva);
+    border-color: transparent;
+    z-index: 2;
+  }
+  .producto:hover .producto-foto img { transform: scale(var(--escala-foto)); }
+  .producto:hover .ver-detalle { opacity: 1; transform: none; }
+  .producto:hover .producto-precio { color: var(--primario); }
+  .producto:hover .agregar::after { transform: translateX(120%); }
+  .agotado:hover .producto-foto img { filter: grayscale(0.3); }
+}
+/* Teclado: la misma respuesta que el puntero. */
+.producto:focus-within { box-shadow: var(--sombra-viva); }
+
+/* ----- Vista de lista ----- */
+.productos[data-vista="lista"] { grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
 .productos[data-vista="lista"] .producto { flex-direction: row; }
-.productos[data-vista="lista"] .producto-foto { width: 112px; flex: none; }
-.productos[data-vista="lista"] .producto-info { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 12px; }
-.productos[data-vista="lista"] .producto-nombre { flex: 1 1 60%; }
-.productos[data-vista="lista"] .producto-desc { flex-basis: 100%; order: 3; }
-.productos[data-vista="lista"] .producto-precio { margin: 0; }
-.productos[data-vista="lista"] .producto-accion { flex-basis: 100%; order: 4; padding-top: 4px; }
+.productos[data-vista="lista"] .producto-media { width: 132px; flex: none; }
+.productos[data-vista="lista"] .producto-pie { grid-template-columns: 1fr auto; align-items: center; }
 .productos[data-vista="lista"] .agregar { width: auto; }
-.productos[data-vista="lista"] .paso { justify-content: flex-start; }
+.productos[data-vista="lista"] .ver-detalle { display: none; }
 
-/* ----- Carro flotante ----- */
+/* ----- Esqueleto de carga ----- */
+.esqueleto-bloque, .esqueleto .producto-media, .linea-esq {
+  background: var(--esqueleto); background-size: 200% 100%;
+  animation: brillo var(--ciclo-brillo) linear infinite;
+}
+.esqueleto { pointer-events: none; }
+.esqueleto .producto-info { gap: 10px; }
+.linea-esq { display: block; height: 14px; border-radius: var(--radio-sm); width: 90%; }
+.linea-esq.corta { width: 55%; }
+.precio-esq { width: 40%; height: 20px; margin-top: 10px; }
+.esqueleto-bloque + .tienda-cuerpo .productos { margin-top: 24px; }
+@keyframes brillo { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+.vacio-busqueda { grid-column: 1 / -1; display: grid; justify-items: center; gap: 6px; }
+.vacio-busqueda .icono { width: 40px; height: 40px; color: var(--texto-marca); }
+
+/* ----- Panel del carrito (escritorio) ----- */
+.pc-cab { display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--borde); }
+.pc-cab h2 { font-size: var(--txt-guia); flex: 1; }
+.pc-vaciar { background: none; color: var(--texto-tenue); }
+@media (hover: hover) { .pc-vaciar:hover { color: var(--error); } }
+.carro-icono { position: relative; display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--primario-tenue); color: var(--primario); flex: none; }
+.carro-icono .icono { width: 22px; height: 22px; }
+.insignia {
+  position: absolute; top: -4px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px;
+  display: grid; place-items: center; border-radius: var(--radio-pildora);
+  background: var(--acento); color: var(--texto-sobre-primario); font-size: var(--txt-micro); font-weight: 700;
+}
+.rebota { animation: rebota var(--lento) var(--curva-rebote); }
+@keyframes rebota { 0% { transform: scale(1); } 40% { transform: scale(1.25); } 100% { transform: scale(1); } }
+.pc-vacio { flex: 1; display: grid; justify-items: center; align-content: center; gap: 4px; padding: 40px 24px; text-align: center; color: var(--texto-tenue); }
+.pc-vacio p { margin: 0; }
+.pc-vacio strong { color: var(--texto-fuerte); }
+.pc-vacio-icono { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 50%; background: var(--surface-2); margin-bottom: 8px; }
+.pc-vacio-icono .icono { width: 32px; height: 32px; color: var(--texto-marca); }
+/* .lineas.pc-lineas: más específico que .lineas (que anula el relleno). */
+.lineas.pc-lineas { flex: 1; overflow-y: auto; padding: 14px 18px; }
+.pc-pie { padding: 14px 18px 18px; border-top: 1px solid var(--borde); display: grid; gap: 12px; background: var(--surface); }
+.pc-continuar { width: 100%; min-height: 52px; font-size: var(--txt-cuerpo); }
+
+/* ----- Líneas del carrito (panel y diálogo) ----- */
+.lineas { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.linea {
+  display: grid; grid-template-columns: 56px minmax(0, 1fr) auto;
+  grid-template-areas: "img info sub" "img accion accion";
+  gap: 6px 12px; align-items: center;
+  border-radius: var(--radio-sm);
+}
+.linea.recien { animation: destello var(--lento) var(--curva-suave) 2; }
+@keyframes destello { 50% { background: var(--primario-tenue-2); } }
+.linea > img { grid-area: img; width: 56px; height: 56px; border-radius: var(--radio-sm); object-fit: cover; align-self: start; }
+.linea > .sin-foto { grid-area: img; align-self: start; }
+.linea-info { grid-area: info; min-width: 0; }
+.linea-nombre { margin: 0; font-weight: 600; font-size: var(--txt-ui); line-height: var(--interlinea-titulo);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.linea-precio { margin: 0; color: var(--texto-tenue); font-size: var(--txt-menudo); }
+.linea-sub { grid-area: sub; margin: 0; font-weight: 700; align-self: start; font-variant-numeric: tabular-nums; }
+.linea .producto-accion { grid-area: accion; min-height: 0; }
+.linea .paso { justify-content: flex-start; }
+.total { display: flex; justify-content: space-between; align-items: baseline; margin: 0; font-size: var(--txt-ui); color: var(--texto-tenue); }
+.total strong { font-size: var(--txt-t3); color: var(--texto-fuerte); font-variant-numeric: tabular-nums; }
+
+/* ----- Botón flotante (tablet y móvil) ----- */
 .carro-flotante {
   position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom));
   z-index: var(--z-flotante);
-  display: inline-flex; align-items: center; gap: 10px;
-  min-height: 56px; padding: 0 20px;
+  display: inline-flex; align-items: center; gap: 12px;
+  min-height: 60px; padding: 0 22px 0 14px;
   border: 0; border-radius: var(--radio-pildora);
   background: var(--degradado); color: var(--texto-sobre-primario);
   font-weight: 700; font-size: var(--txt-ui); cursor: pointer;
   box-shadow: var(--sombra-alta);
-  animation: entra var(--medio) var(--curva-salida);
+  animation: sube var(--medio) var(--curva-rebote);
 }
 .carro-flotante[hidden] { display: none; }
-#carro-n {
-  display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 6px;
-  border-radius: var(--radio-pildora); background: var(--surface); color: var(--primario); font-size: var(--txt-micro);
+/* En escritorio el pedido ya está a la vista en el panel lateral. */
+@media (min-width: 1100px) { .carro-flotante { display: none; } }
+.carro-flotante .carro-icono { background: var(--surface); color: var(--primario); }
+.carro-total { font-size: var(--txt-guia); font-variant-numeric: tabular-nums; }
+@keyframes sube { from { transform: translateY(100%); opacity: 0; } }
+/* Con carro visible se reserva espacio abajo: el botón no tapa la última fila. */
+@media (max-width: 1099px) { body.con-carro .pie { padding-bottom: 110px; } }
+
+.volver-arriba {
+  position: fixed; left: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: var(--z-flotante);
+  width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--borde);
+  background: var(--surface); color: var(--primario); box-shadow: var(--sombra); cursor: pointer;
+  display: grid; place-items: center; animation: sube var(--medio) var(--curva-salida);
 }
+.volver-arriba[hidden] { display: none; }
+@media (min-width: 1100px) { .volver-arriba { left: auto; right: calc(var(--carrito-w) + var(--margen) + 40px); } }
 
-/* ----- Detalle ----- */
-.detalle-foto { width: 100%; border-radius: var(--radio-sm); aspect-ratio: 1; object-fit: cover; background: var(--surface-2); }
-.detalle-desc { margin: 0; white-space: pre-line; }
-.detalle p { margin: 0; display: flex; gap: 6px; flex-wrap: wrap; }
-#dlg-producto .dialogo-pie .producto-accion { padding: 0; width: 100%; }
+/* Clon de la foto que vuela al carrito (main.js → volarAlCarrito). */
+.volando { position: fixed; z-index: var(--z-avisos); object-fit: cover; pointer-events: none; box-shadow: var(--sombra-alta); }
 
-/* ----- Carrito (panel lateral) ----- */
+/* ----- Detalle de producto ----- */
+#dlg-producto { width: min(100% - 24px, 900px); }
+.detalle { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.detalle-media { aspect-ratio: 1 / 1; border-radius: var(--radio); overflow: hidden; background: var(--surface-2); display: grid; place-items: center; }
+.detalle-foto { width: 100%; height: 100%; object-fit: cover; animation: acerca var(--lento) var(--curva-salida); }
+@keyframes acerca { from { transform: scale(1.06); opacity: 0.6; } }
+.detalle-info { display: grid; gap: 14px; align-content: start; }
+.detalle-info .producto-accion { max-width: 280px; }
+.detalle-etiquetas { margin: 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.detalle-desc { margin: 0; white-space: pre-line; color: var(--texto); }
+.detalle .agregar { min-height: 48px; font-size: var(--txt-cuerpo); }
+
+/* ----- Diálogo de pedido (panel lateral) ----- */
 .dialogo-lateral {
-  margin: 0 0 0 auto; height: 100dvh; max-height: 100dvh; width: min(100%, 460px);
+  margin: 0 0 0 auto; height: 100dvh; max-height: 100dvh; width: min(100%, 480px);
   border-radius: var(--radio) 0 0 var(--radio);
   display: flex; flex-direction: column;
 }
+.dialogo-lateral[open] { animation: desde-derecha var(--medio) var(--curva-salida); }
+@keyframes desde-derecha { from { transform: translateX(40px); opacity: 0; } }
 .dialogo-lateral:not([open]) { display: none; }
 .dialogo-lateral .dialogo-cuerpo { overflow-y: auto; flex: 1; }
-.lineas { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.linea { display: grid; grid-template-columns: 56px 1fr auto; grid-template-areas: "img info sub" "img accion accion"; gap: 4px 12px; align-items: center; }
-.linea > img { grid-area: img; width: 56px; height: 56px; border-radius: var(--radio-sm); object-fit: cover; }
-.linea > .sin-foto { grid-area: img; }
-.linea-info { grid-area: info; min-width: 0; }
-.linea-nombre { margin: 0; font-weight: 600; font-size: var(--txt-ui); }
-.linea-precio { margin: 0; color: var(--texto-tenue); font-size: var(--txt-menudo); }
-.linea-sub { grid-area: sub; margin: 0; font-weight: 700; }
-.linea .producto-accion { grid-area: accion; padding: 0; }
-.linea .paso { justify-content: flex-start; }
-.total { display: flex; justify-content: space-between; align-items: baseline; margin: 0; padding-top: 12px; border-top: 1px solid var(--borde); font-size: var(--txt-guia); }
-.total strong { font-size: var(--txt-t3); }
-.vaciar { justify-self: start; }
-.form-pedido { display: grid; gap: 12px; padding-top: 8px; border-top: 1px solid var(--borde); }
+.btn-ancho { width: 100%; min-height: 52px; white-space: normal; }
+.form-pedido { display: grid; gap: 12px; padding-top: 12px; border-top: 1px solid var(--borde); }
 .form-pedido h3 { font-size: var(--txt-guia); }
-.entrega { border: 1px solid var(--borde); border-radius: var(--radio-sm); padding: 10px 14px; display: grid; gap: 6px; margin: 0; }
-.entrega legend { font-size: var(--txt-menudo); font-weight: 600; color: var(--texto-tenue); padding: 0 4px; }
-.entrega label { display: flex; gap: 8px; align-items: center; min-height: 32px; }
+.entrega { border: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0; }
+.entrega legend { font-size: var(--txt-menudo); font-weight: 600; color: var(--texto-tenue); padding: 0 0 6px; }
+.opcion { position: relative; cursor: pointer; }
+.opcion input { position: absolute; opacity: 0; }
+.opcion span {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center;
+  min-height: 76px; padding: 10px; border: 2px solid var(--borde); border-radius: var(--radio-sm);
+  font-size: var(--txt-menudo); font-weight: 600;
+  transition: border-color var(--rapido) var(--curva-suave), background var(--rapido) var(--curva-suave);
+}
+.opcion input:checked + span { border-color: var(--primario); background: var(--primario-tenue); color: var(--primario); }
+.opcion input:focus-visible + span { outline: 3px solid var(--borde-vivo); outline-offset: 2px; }
 .error-form { margin: 0; color: var(--error); font-size: var(--txt-menudo); min-height: 1em; }
-.dialogo-lateral .dialogo-pie .btn { width: 100%; }
 
 .tabla-horario { width: 100%; border-collapse: collapse; }
-.tabla-horario th, .tabla-horario td { text-align: left; padding: 8px 0; border-bottom: 1px solid var(--borde); }
+.tabla-horario th, .tabla-horario td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--borde); }
+.tabla-horario tr.hoy { background: var(--primario-tenue); font-weight: 700; color: var(--primario); }
 
-.pie { text-align: center; color: var(--texto-tenue); font-size: var(--txt-menudo); padding: 24px 0 100px; }
+.pie { text-align: center; color: var(--texto-tenue); font-size: var(--txt-menudo); padding: 24px 0 40px; }
+.pie p { margin: 4px 0; }
 .pie a { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
 
+/* ============================================================
+   MÓVIL Y TABLET
+   ============================================================ */
+
+/* Pantalla táctil: todo lo pulsable llega a 44px (guías de Apple y Google). */
+@media (pointer: coarse) {
+  .btn-chico { min-height: var(--toque-min); }
+  .btn-chico.btn-icono { width: var(--toque-min); }
+  .chip { min-height: 40px; }
+  .producto-accion { min-height: var(--toque-min); }
+  .enlace-horario { min-height: var(--toque-min); }
+  /* 16px: por debajo Safari de iOS hace zoom al tocar el campo. */
+  .orden { font-size: var(--txt-cuerpo); min-height: var(--toque-min); }
+  .vistas .btn { min-height: var(--toque-min); width: var(--toque-min); }
+}
+
+@media (max-width: 760px) {
+  :root { --ficha-min: 150px; }
+  /* Categorías en una fila deslizable, con desvanecido en el borde para que
+     se entienda que hay más, en vez de un corte seco. */
+  .categorias {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    margin: 0 calc(-1 * var(--margen)); padding: 0 var(--margen);
+    scroll-padding-inline: var(--margen); scroll-snap-type: x proximity;
+    mask-image: linear-gradient(to right, transparent 0, black var(--margen), black calc(100% - 28px), transparent 100%);
+  }
+  .categorias::-webkit-scrollbar { display: none; }
+  .chip { scroll-snap-align: start; }
+  .productos[data-vista="lista"] { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 560px) {
+  /* Cabecera compacta: en un teléfono de 568px de alto, la versión de
+     escritorio dejaba el primer producto fuera de la primera pantalla. */
+  .portada { height: 30vw; }
+  .cabecera-info { gap: 12px; padding: 10px var(--margen) 10px; }
+  .logo { width: 68px; height: 68px; margin-top: -34px; border-width: 3px; }
+  .cabecera-texto { gap: 4px; flex: 1; }
+  .cabecera-texto h1 { font-size: var(--txt-t3); }
+  .cabecera-datos { gap: 0 10px; }
+  .estado { padding: 2px 10px 2px 8px; }
+  .dato { flex-basis: 100%; min-width: 0; order: 3; }
+  .dato .icono { flex: none; }
+  .dato { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .barra-filtros { padding-top: 10px; gap: 8px; }
+
   .productos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .cabecera-info { flex-direction: column; gap: 8px; }
-  .logo { width: 80px; height: 80px; }
-  .producto-info { padding: 10px; }
-  .filtros-fila { width: 100%; }
-  .orden { flex: 1; }
+  .producto-info { padding: 10px 10px 12px; }
+  .producto-texto { --t-nombre: var(--txt-menudo); }
+  .producto-precio { font-size: var(--txt-cuerpo); }
+  .sello { top: 6px; left: 6px; padding: 3px 8px; }
+  .ver-detalle { display: none; }
+  .agregar { padding: 0 8px; }
+  .productos[data-vista="lista"] .producto-media { width: 108px; }
+
+  .barra-orden { padding: 10px 0 8px; flex-wrap: nowrap; }
+  .conteo { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+  .conteo-cat { display: none; }
+  .orden-grupo { flex: none; }
+  .orden { width: 176px; }
+  /* El detalle ocupa la pantalla: le gana al ancho fijo de escritorio. */
+  #dlg-producto.hoja { width: 100%; }
+
+  /* Carro: barra ancha abajo, fácil de alcanzar con el pulgar. */
+  .carro-flotante { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); justify-content: space-between; }
+  .volver-arriba { bottom: calc(86px + env(safe-area-inset-bottom)); right: 16px; left: auto; width: 44px; height: 44px; }
+
+  /* Diálogos como hojas que suben desde abajo. */
+  dialog.hoja {
+    width: 100%; max-width: 100%; margin: auto 0 0; max-height: 92dvh; height: auto;
+    border-radius: var(--radio) var(--radio) 0 0;
+  }
+  dialog.hoja[open] { animation: hoja-sube var(--medio) var(--curva-salida); }
+  .dialogo-lateral.hoja { height: 92dvh; }
+  .detalle { grid-template-columns: 1fr; gap: 16px; }
+  .detalle-info .producto-accion { max-width: none; }
+  .dialogo-pie { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+}
+@keyframes hoja-sube { from { transform: translateY(40%); opacity: 0; } }
+
+/* En los teléfonos más angostos la vista de lista no aporta y su par de
+   botones le quitaba espacio al selector de orden. */
+@media (max-width: 420px) { .vistas { display: none; } }
+
+@media (max-width: 360px) {
+  .productos { gap: 8px; }
+  .producto-info { padding: 8px; }
+  .paso { gap: 2px; }
 }

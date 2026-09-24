@@ -76,6 +76,21 @@
   --curva-suave:  cubic-bezier(0.4, 0, 0.2, 1);
   --levanta: -2px;
   --hunde:   1px;
+  --levanta-ficha: -8px;       /* tarjeta de producto con el puntero encima */
+  --escala-foto: 1.08;         /* zoom de la foto al pasar el puntero */
+  --curva-rebote: cubic-bezier(0.34, 1.56, 0.64, 1);   /* "pop" al agregar */
+  --escalonado: 45ms;          /* retardo entre tarjetas al entrar */
+  --ciclo-brillo: 1.4s;        /* esqueleto de carga */
+  --vuelo: 650ms;              /* la foto que vuela al carrito (main.js la lee) */
+  --ciclo-latido: 2s;          /* punto verde de "Abierto" */
+
+  /* Efectos del catálogo, derivados de la paleta. */
+  --sombra-viva: 0 20px 44px color-mix(in srgb, var(--primario) 26%, transparent),
+                 0 0 0 2px color-mix(in srgb, var(--primario-claro) 60%, transparent);
+  --velo-foto: linear-gradient(to top, color-mix(in srgb, var(--texto-fuerte) 62%, transparent) 0%, transparent 55%);
+  --brillo-boton: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.45) 50%, transparent 70%);
+  --esqueleto: linear-gradient(90deg, var(--surface-2) 0%, var(--bg-2) 50%, var(--surface-2) 100%);
+  --ok-halo: color-mix(in srgb, var(--ok) 45%, transparent);
 
   /* ----- Formas y medidas ----- */
   --radio:     14px;
@@ -84,6 +99,11 @@
   --toque-min: 44px;
   --ancho-max: 1200px;
   --barra-h:   60px;
+  /* Margen lateral del catálogo a ancho completo: crece con la pantalla en
+     vez de dejar un bloque de 1200px flotando en un monitor de 1900px. */
+  --margen:    clamp(16px, 2.6vw, 40px);
+  --carrito-w: 380px;          /* panel del carrito fijo en escritorio */
+  --ficha-min: 200px;          /* ancho mínimo de tarjeta en la rejilla */
 
   --sombra:       0 10px 30px rgba(0, 0, 0, 0.10);
   --sombra-suave: 0 2px 10px rgba(0, 0, 0, 0.06);
