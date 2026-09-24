@@ -1,0 +1,141 @@
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--texto);
+  font-family: var(--fuente-texto);
+  font-size: var(--txt-cuerpo);
+  line-height: var(--interlinea-cuerpo);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--fuente-titulos);
+  line-height: var(--interlinea-titulo);
+  color: var(--texto-fuerte);
+  margin: 0;
+}
+
+img { max-width: 100%; display: block; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--primario); }
+
+.icono { width: 1.25em; height: 1.25em; flex: none; }
+
+.oculto-visual {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+.contenedor { width: min(100% - 32px, var(--ancho-max)); margin-inline: auto; }
+
+/* ----- Botones ----- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--toque-min);
+  padding: 0 18px;
+  border: 1px solid transparent;
+  border-radius: var(--radio-pildora);
+  background: var(--surface);
+  color: var(--texto-fuerte);
+  font-size: var(--txt-ui);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--rapido) var(--curva-salida), background var(--rapido) var(--curva-suave),
+              box-shadow var(--rapido) var(--curva-salida);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.btn:active { transform: translateY(var(--hunde)); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primario { background: var(--primario); color: var(--texto-sobre-primario); }
+.btn-borde { border-color: var(--borde); }
+.btn-whatsapp { background: var(--whatsapp); color: var(--texto-sobre-primario); }
+.btn-peligro { background: var(--error-tenue); color: var(--error); }
+.btn-chico { min-height: 36px; padding: 0 12px; font-size: var(--txt-menudo); }
+.btn-icono { padding: 0; width: var(--toque-min); }
+.btn-chico.btn-icono { width: 36px; }
+
+@media (hover: hover) {
+  .btn:hover:not(:disabled) { transform: translateY(var(--levanta)); box-shadow: var(--sombra-suave); }
+  .btn-borde:hover:not(:disabled) { border-color: var(--borde-vivo); }
+}
+
+:focus-visible { outline: 3px solid var(--borde-vivo); outline-offset: 2px; }
+
+/* ----- Campos ----- */
+.campo { display: grid; gap: 6px; }
+.campo > span { font-size: var(--txt-menudo); font-weight: 600; color: var(--texto-tenue); }
+.entrada {
+  width: 100%;
+  min-height: var(--toque-min);
+  padding: 10px 14px;
+  border: 1px solid var(--borde);
+  border-radius: var(--radio-sm);
+  background: var(--surface);
+  /* 16px como mínimo: por debajo Safari de iOS hace zoom al enfocar. */
+  font-size: var(--txt-cuerpo);
+  transition: border-color var(--rapido) var(--curva-suave);
+}
+.entrada:focus { outline: none; border-color: var(--primario); box-shadow: 0 0 0 3px var(--primario-tenue-2); }
+.entrada::placeholder { color: var(--texto-marca); }
+textarea.entrada { min-height: 80px; resize: vertical; }
+
+/* ----- Diálogos (<dialog> nativo: foco atrapado y Escape gratis) ----- */
+dialog {
+  border: 0;
+  padding: 0;
+  border-radius: var(--radio);
+  background: var(--surface);
+  color: var(--texto);
+  box-shadow: var(--sombra-alta);
+  width: min(100% - 24px, 560px);
+  max-height: calc(100dvh - 24px);
+}
+dialog::backdrop { background: var(--velo-modal); }
+dialog[open] { animation: entra var(--medio) var(--curva-salida); }
+.dialogo-cab {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 20px; border-bottom: 1px solid var(--borde);
+  position: sticky; top: 0; background: var(--surface); z-index: 1;
+}
+.dialogo-cab h2 { font-size: var(--txt-t3); }
+.dialogo-cuerpo { padding: 20px; display: grid; gap: 16px; }
+.dialogo-pie {
+  padding: 16px 20px; border-top: 1px solid var(--borde);
+  display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;
+  position: sticky; bottom: 0; background: var(--surface);
+}
+
+@keyframes entra { from { opacity: 0; transform: translateY(12px); } }
+
+/* ----- Avisos ----- */
+#avisos {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  display: grid; gap: 8px; z-index: var(--z-avisos); width: min(100% - 32px, 420px);
+}
+.aviso {
+  padding: 12px 16px; border-radius: var(--radio-sm); background: var(--texto-fuerte);
+  color: var(--surface); font-size: var(--txt-ui); box-shadow: var(--sombra);
+  animation: entra var(--medio) var(--curva-salida);
+}
+.aviso-error { background: var(--error); color: var(--texto-sobre-primario); }
+
+.etiqueta {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: var(--radio-pildora);
+  font-size: var(--txt-micro); font-weight: 600;
+  background: var(--surface-2); color: var(--texto-tenue);
+}
+.etiqueta-ok { background: var(--ok-tenue); color: var(--ok); }
+.etiqueta-aviso { background: var(--aviso-tenue); color: var(--aviso); }
+.etiqueta-error { background: var(--error-tenue); color: var(--error); }
+
+.vacio { text-align: center; color: var(--texto-tenue); padding: 48px 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

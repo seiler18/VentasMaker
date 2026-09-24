@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.vscode/
+*.log
+
+# Material de trabajo del scraping: originales de 60 MB y volcados crudos.
+# Lo que se publica ya está optimizado en public/.
+scraping/img_orig/
+scraping/img/
+scraping/*.html
+scraping/*.txt
+scraping/*.js
+scraping/logo.jpg
+
+# Nunca: exportaciones de la planilla (traen hashes de claves y ventas).
+*.xlsx
+*.csv
+.env*

@@ -1,0 +1,95 @@
+/* ============================================================
+   TOKENS — heredados del sistema de WebMaker (misma estructura y nombres),
+   con paleta clara sacada del banner de la tienda: morado de fondo, magenta
+   del logo y el dorado de "Ale".
+
+   REGLA: fuera de este archivo no hay colores, tamaños de letra ni
+   duraciones literales. `npm run check` lo comprueba.
+   ============================================================ */
+
+:root {
+  /* ----- Fondos ----- */
+  --bg:          #f7f5fb;
+  --bg-2:        #efeaf7;
+  --surface:     #ffffff;
+  --surface-2:   #f3f0f9;
+
+  /* ----- Marca ----- */
+  --primario:       #6b21a8;   /* morado del banner; blanco encima = 9,4:1 */
+  --primario-claro: #9333ea;
+  --acento:         #c026d3;   /* magenta del logo */
+  --dorado:         #d4a017;
+
+  /* ----- Texto ----- */
+  --texto:        #231b30;
+  --texto-tenue:  #625a70;     /* 6,3:1 sobre --surface */
+  --texto-fuerte: #120b1c;
+  --texto-sobre-primario: #ffffff;
+
+  /* ----- Bordes ----- */
+  --borde:      #e4def0;
+  --borde-vivo: color-mix(in srgb, var(--primario) 45%, transparent);
+
+  /* ----- Estados (reservados: no se usan para decorar) ----- */
+  --ok:        #15803d;
+  --aviso:     #b45309;
+  --error:     #b91c1c;
+  --whatsapp:  #128c4b;        /* verde WhatsApp oscurecido: blanco = 4,7:1 */
+
+  /* ----- Derivados (no se tocan al cambiar de paleta) ----- */
+  --primario-tenue:   color-mix(in srgb, var(--primario) 10%, transparent);
+  --primario-tenue-2: color-mix(in srgb, var(--primario) 18%, transparent);
+  --acento-tenue:     color-mix(in srgb, var(--acento) 12%, transparent);
+  --ok-tenue:         color-mix(in srgb, var(--ok) 12%, transparent);
+  --aviso-tenue:      color-mix(in srgb, var(--aviso) 14%, transparent);
+  --error-tenue:      color-mix(in srgb, var(--error) 12%, transparent);
+  --superficie-viva:  color-mix(in srgb, var(--primario) 4%, var(--surface));
+  --barra-fondo:      color-mix(in srgb, var(--surface) 88%, transparent);
+  --velo-modal:       color-mix(in srgb, var(--texto-fuerte) 55%, transparent);
+  --texto-marca:      color-mix(in srgb, var(--texto-tenue) 75%, transparent);
+  --degradado:        linear-gradient(135deg, var(--primario) 0%, var(--acento) 100%);
+  --rejilla-grafico:  color-mix(in srgb, var(--texto-tenue) 18%, transparent);
+
+  /* ----- Tipografía ----- */
+  --fuente-titulos: 'Poppins', system-ui, sans-serif;
+  --fuente-texto:   'Inter', system-ui, sans-serif;
+
+  --txt-grafico: 0.6875rem;  /* 11px — SOLO ejes de gráficos (el SVG escala) */
+  --txt-micro:  0.75rem;     /* 12px — contadores, etiquetas de estado */
+  --txt-menudo: 0.8125rem;   /* 13px — pies de ficha, legales, tablas densas */
+  --txt-ui:     0.9375rem;   /* 15px — botones, campos */
+  --txt-cuerpo: 1rem;        /* 16px */
+  --txt-guia:   1.125rem;    /* 18px — nombre en la ficha de detalle */
+  --txt-t3:     1.375rem;    /* 22px — títulos de panel */
+  --txt-t2:     clamp(1.5rem, 1.1rem + 1.6vw, 2rem);
+  --txt-cifra:  clamp(1.5rem, 1.2rem + 1.2vw, 2rem);
+
+  --interlinea-titulo: 1.2;
+  --interlinea-cuerpo: 1.55;
+  --tracking-etiqueta: 0.06em;
+
+  /* ----- Movimiento ----- */
+  --rapido: 120ms;
+  --medio:  240ms;
+  --lento:  420ms;
+  --curva-salida: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --curva-suave:  cubic-bezier(0.4, 0, 0.2, 1);
+  --levanta: -2px;
+  --hunde:   1px;
+
+  /* ----- Formas y medidas ----- */
+  --radio:     14px;
+  --radio-sm:  9px;
+  --radio-pildora: 999px;
+  --toque-min: 44px;
+  --ancho-max: 1200px;
+  --barra-h:   60px;
+
+  --sombra:       0 10px 30px rgba(0, 0, 0, 0.10);
+  --sombra-suave: 0 2px 10px rgba(0, 0, 0, 0.06);
+  --sombra-alta:  0 18px 44px rgba(0, 0, 0, 0.18);
+
+  --z-barra: 100;
+  --z-flotante: 110;
+  --z-avisos: 200;
+}
