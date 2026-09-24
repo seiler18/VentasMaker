@@ -38,6 +38,9 @@ traerlos del Excel (ver «Importar el Excel» abajo).
 
 ## Puesta en marcha (una sola vez, ~15 minutos)
 
+> Guía detallada, con cada clic y los problemas frecuentes, para quien no es
+> técnico: [`backend/PASO-A-PASO.md`](backend/PASO-A-PASO.md).
+
 > Hazlo con la **cuenta de Google de la tienda**: la hoja y los datos quedan a su
 > nombre, no al de quien programó el sitio.
 
