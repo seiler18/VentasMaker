@@ -44,11 +44,12 @@ const hojas = {}
 const ss = {
   getSheetByName: (n) => hojas[n] || null,
   insertSheet: (n) => (hojas[n] = new Hoja(n)),
+  getId: () => 'hoja-simulada-123',
 }
 const cache = new Map(), props = new Map(), logs = []
 const G = {
   console: { log: (...a) => logs.push(a.join(' ')), error: (...a) => logs.push('ERR ' + a.join(' ')) },
-  SpreadsheetApp: { getActive: () => ss, flush() {} },
+  SpreadsheetApp: { getActive: () => ss, openById: () => ss, flush() {} },
   CacheService: { getScriptCache: () => ({
     get: (k) => cache.get(k) ?? null, put: (k, v) => cache.set(k, v), remove: (k) => cache.delete(k),
     getAll: (ks) => Object.fromEntries(ks.filter((k) => cache.has(k)).map((k) => [k, cache.get(k)])),

@@ -562,7 +562,7 @@ function semanaIso_(f) {
 /* Lo ejecuta el disparador diario (ver instalarDisparadores). Reescribe las
    cuatro hojas de resumen y, si hay correo configurado, manda el del día. */
 function generarReportes() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ss_();
   [['dia', 'Resumen diario'], ['semana', 'Resumen semanal'], ['mes', 'Resumen mensual'], ['anio', 'Resumen anual']]
     .forEach(([periodo, nombre]) => {
       const r = reporte_(periodo);
@@ -607,7 +607,7 @@ function generarReportes() {
       muestra UNA vez en el registro de ejecución: cópiala y cámbiala al
       entrar. No se guarda en ningún sitio legible. */
 function instalar() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = ss_();
   Object.keys(HOJAS).forEach(k => {
     let h = ss.getSheetByName(NOMBRE_HOJA[k]);
     if (!h) h = ss.insertSheet(NOMBRE_HOJA[k]);
@@ -673,7 +673,7 @@ function importarSemilla() {
     return HOJAS.productos.map(c => f[c] === undefined ? '' : (typeof f[c] === 'string' ? celda_(f[c]) : f[c]));
   });
   agregar_('productos', filas);
-  const h = SpreadsheetApp.getActive().getSheetByName('Productos');
+  const h = ss_().getSheetByName('Productos');
   h.getRange(2, HOJAS.productos.indexOf('codigo') + 1, filas.length, 1).setNumberFormat('@');
   h.getRange(2, HOJAS.productos.indexOf('sku') + 1, filas.length, 1).setNumberFormat('@');
   console.log('Importados ' + filas.length + ' productos.');
@@ -811,8 +811,26 @@ function sha256_(s) {
    ACCESO A LA HOJA
    ============================================================ */
 
+/* SpreadsheetApp.getActive() solo "ve" la hoja cuando el código corre con
+   contexto de interfaz: desde el editor (▷ Ejecutar) o un disparador simple.
+   Un doGet/doPost de la aplicación web, o un disparador instalable (el
+   reporte de las 23:00), NO tienen ese contexto y getActive() devuelve null
+   — el síntoma es "Error interno" apenas alguien entra al catálogo público.
+   Por eso el identificador de la hoja se guarda una vez (la primera vez que
+   se ejecuta algo desde el editor, donde getActive() sí funciona) y desde
+   entonces se abre siempre por ese identificador, que no depende de nada. */
+function ss_() {
+  const props = PropertiesService.getScriptProperties();
+  let id = props.getProperty('SHEET_ID');
+  if (id) return SpreadsheetApp.openById(id);
+  const activa = SpreadsheetApp.getActive();
+  if (!activa) throw new Error('Ejecuta instalar() una vez desde el editor de Apps Script antes de usar la aplicación web.');
+  props.setProperty('SHEET_ID', activa.getId());
+  return activa;
+}
+
 function hoja_(k) {
-  const h = SpreadsheetApp.getActive().getSheetByName(NOMBRE_HOJA[k]);
+  const h = ss_().getSheetByName(NOMBRE_HOJA[k]);
   if (!h) throw new Error('Falta la hoja ' + NOMBRE_HOJA[k] + '. Ejecuta instalar().');
   return h;
 }
