@@ -139,6 +139,9 @@ esperar('stock descontado', r.stock[0].stock === 3)
 esperar('venta con más que el stock falla', !post({ accion: 'vender', token: tok, items: [{ id: 'p1', cantidad: 4 }] }).ok)
 esperar('cantidad negativa falla', !post({ accion: 'vender', token: tok, items: [{ id: 'p1', cantidad: -3 }] }).ok)
 esperar('cantidad decimal no pasa como fracción', !post({ accion: 'vender', token: tok, items: [{ id: 'p1', cantidad: 0.4 }] }).ok)
+for (const id of ['__proto__', 'constructor', 'toString']) {
+  esperar(`id heredado "${id}" no pasa como producto`, /no encontrado/.test(post({ accion: 'vender', token: tok, items: [{ id, cantidad: 1 }] }).error || ''))
+}
 hojas.Productos.d[3][8] = 'muchos'
 esperar('stock con texto en la celda no permite vender', !post({ accion: 'vender', token: tok, items: [{ id: 'p3', cantidad: 1 }] }).ok)
 hojas.Productos.d[3][8] = 9
@@ -193,6 +196,12 @@ esperar('cambiar rol cierra la sesión del afectado', post({ accion: 'sesion', t
 post({ accion: 'guardarUsuario', token: tok, usuario: { usuario: 'caja', rol: 'vendedor', activo: false } })
 esperar('usuario desactivado no entra', !post({ accion: 'login', usuario: 'caja', clave: 'CajaPropia2026' }).ok)
 esperar('admin no se quita su rol', !post({ accion: 'guardarUsuario', token: tok, usuario: { usuario: 'admin', rol: 'vendedor' } }).ok)
+// fuerza bruta de "clave actual" con un token robado
+post({ accion: 'guardarUsuario', token: tok, usuario: { nuevo: true, usuario: 'bodega', nombre: 'Bodega', rol: 'vendedor', clave: 'Provisoria456' } })
+const tb = post({ accion: 'login', usuario: 'bodega', clave: 'Provisoria456' }).token
+for (let i = 0; i < 5; i++) post({ accion: 'cambiarClave', token: tb, actual: 'adivina' + i, nueva: 'BodegaPropia2026' })
+esperar('cambiarClave se bloquea tras 5 fallos', /15 minutos/.test(post({ accion: 'cambiarClave', token: tb, actual: 'Provisoria456', nueva: 'BodegaPropia2026' }).error || ''))
+esperar('el bloqueo de cambiarClave también frena el login', /15 minutos/.test(post({ accion: 'login', usuario: 'bodega', clave: 'Provisoria456' }).error || ''))
 
 // config
 post({ accion: 'guardarConfig', token: tok, config: { tienda_nombre: '=1+1', PIMIENTO: 'x', email_reporte: 'a@b.cl' } })

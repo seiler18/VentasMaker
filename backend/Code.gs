@@ -157,9 +157,21 @@ const ACCIONES = {
   cambiarClave: (b, ses) => {
     const actual = String(b.actual || ''), nueva = String(b.nueva || '');
     validarClave_(nueva);
+    // Mismo contador de fallos que el login: sin él, quien robe un token
+    // podría probar claves sin límite contra "clave actual" y, al acertar,
+    // cambiarla y quedarse con la cuenta más allá de las 6 h de la sesión.
+    const cache = CacheService.getScriptCache();
+    const kFallos = 'fallo_' + sha256_(ses.usuario);
+    const fallos = Number(cache.get(kFallos) || 0);
+    if (fallos >= MAX_FALLOS) falla_('Demasiados intentos. Espera 15 minutos.');
     const tabla = leer_('usuarios');
     const fila = tabla.filas.find(u => u.usuario === ses.usuario);
-    if (!fila || !claveCorrecta_(actual, fila)) falla_('La clave actual no es correcta');
+    if (!fila || !claveCorrecta_(actual, fila)) {
+      cache.put(kFallos, String(fallos + 1), BLOQUEO_SEG);
+      registrar_(ses.usuario, 'cambiarClaveFallido', '');
+      falla_('La clave actual no es correcta');
+    }
+    cache.remove(kFallos);
     if (claveCorrecta_(nueva, fila)) falla_('La clave nueva debe ser distinta de la actual');
     const sal = aleatorio_();
     conBloqueo_(() => actualizarFila_('usuarios', fila._fila, { sal: sal, hash: hashClave_(nueva, sal), debe_cambiar: false }));
@@ -201,11 +213,14 @@ const ACCIONES = {
       // Se lee DENTRO del bloqueo: si se leyera antes, dos ventas simultáneas
       // verían el mismo stock y ambas lo darían por disponible.
       const tabla = leer_('productos');
-      const porId = {};
+      // Sin prototipo: con un {} normal, un id "__proto__" o "constructor"
+      // mandado por el cliente pasaría el "producto existe" (heredaría de
+      // Object.prototype) y la venta seguiría con datos que no son de la hoja.
+      const porId = Object.create(null);
       tabla.filas.forEach(p => porId[p.id] = p);
 
       // Agrupa por producto: el mismo código escaneado dos veces es una línea.
-      const cant = {};
+      const cant = Object.create(null);
       items.forEach(it => {
         const id = String(it.id || '');
         const c = entero_(it.cantidad, 0);

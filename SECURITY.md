@@ -1,9 +1,11 @@
 # Seguridad — VentasMaker
 
 Auditoría hecha antes de publicar (septiembre 2026): revisión adversarial
-independiente del backend y del front, más un banco de **66 pruebas
+independiente del backend y del front, más un banco de **pruebas
 automáticas** del backend (`Code.gs` ejecutado en Node con simulaciones de
-Apps Script) y un recorrido en navegador real con la CSP activa.
+Apps Script; `npm test`, 71 a la fecha) y un recorrido en navegador real con la
+CSP activa. Segunda revisión, del repositorio entero e historial incluido, el
+2026-09-26: hallazgos L6, L7 e I2 de la tabla.
 
 ## Qué se protege y de quién
 
@@ -29,7 +31,8 @@ Apps Script) y un recorrido en navegador real con la CSP activa.
   guarda solo su hash, 6 h. Lleva la **versión de la cuenta**: cambiar clave, rol
   o desactivar sube la versión y mata al instante todas las sesiones de esa cuenta.
 - Login: bloqueo de 15 min tras 5 fallos por usuario + **freno global** de 20
-  intentos/minuto antes de cualquier trabajo caro. Los usuarios inexistentes
+  intentos/minuto antes de cualquier trabajo caro. «Cambiar clave» comparte el
+  contador de fallos del login: un token robado no sirve para adivinar la clave. Los usuarios inexistentes
   cuestan lo mismo (no se puede enumerar) y no dejan rastro en caché ni en la hoja.
 - Precio de venta lo pone el servidor; stock verificado dentro de `LockService`;
   cantidades enteras 1–1000; celdas con texto en stock/precio bloquean la venta.
@@ -67,6 +70,9 @@ Pages. `npm ci --ignore-scripts`, `npm audit`, acciones fijadas por SHA.
 | L4 | Baja | Clave inicial en el registro de ejecución, sin cambio forzado | **Corregido** (cambio obligatorio) |
 | L5 | Baja | CI con permiso de escritura y scripts de instalación | **Corregido** |
 | — | Info | Horario malformado rompía el catálogo | **Corregido** |
+| L6 | Baja | `cambiarClave` no limitaba los intentos de «clave actual»: con un token robado se podía adivinar la clave por fuerza bruta y quedarse con la cuenta pasadas las 6 h de la sesión | **Corregido** en el código (2026-09-26); vale en producción cuando se redespliegue |
+| L7 | Baja | El freno global (20 logins/minuto) lo puede agotar cualquiera sin cuenta: mientras dure el ataque, nadie inicia sesión | Aceptado: Apps Script no entrega la IP del cliente, así que no hay freno por origen; sin el global, el mismo ataque agota la cuota del dueño y tumba también catálogo y caja. Las sesiones abiertas siguen |
+| I2 | Info | `vender` buscaba los productos en un objeto con prototipo: un id `__proto__` pasaba como «existe» (sin efecto real: la venta salía vacía o fallaba) | **Corregido** (2026-09-26), mismo redespliegue que L6 |
 
 ## Lo que queda en manos de la dueña (importante)
 
@@ -85,7 +91,9 @@ Pages. `npm ci --ignore-scripts`, `npm audit`, acciones fijadas por SHA.
    hoja y en la cuenta de GitHub: quien entra a cualquiera de las dos controla el
    sistema completo.
 4. Redesplegar Apps Script como «versión nueva» de la misma implementación tras
-   cada cambio de `Code.gs`.
+   cada cambio de `Code.gs`. **Pendiente al 2026-09-26**: pegar el `Code.gs`
+   actual (L6 e I2) y publicar una versión nueva; hasta entonces producción
+   sigue con el código anterior.
 
 ## Sobre el sitio anterior (catalogo.treinta.co)
 
