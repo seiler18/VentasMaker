@@ -21,6 +21,25 @@ Modelo de amenazas y decisiones de seguridad: `SECURITY.md`.
 | Semilla del catálogo | `public/data/catalogo.json` (sale de `scraping/`) |
 | CSP | `vite.config.js` (solo en build) |
 
+## Procedimientos y memoria
+
+**Antes de una tarea, comprueba si hay una skill que la cubra.** Al terminar
+algo con sustancia, registra el hito.
+
+| Necesitas… | Skill |
+|---|---|
+| Montar **otra tienda** con este sistema | `levantar-tienda` |
+| Migrar o cargar productos (Treinta, Excel) | `importar-catalogo` |
+| Llevar un cambio de `Code.gs` a producción, o el backend no conecta | `desplegar-backend` |
+| Publicar el front | `desplegar` |
+| Que el panel haga algo nuevo contra la hoja | `agregar-accion-backend` |
+| Una pestaña nueva del panel | `agregar-vista-panel` |
+| Revisar la seguridad | `auditar-seguridad` |
+| Recorrer el sitio en un navegador por línea de comandos | `playwright-cli` |
+| Dejar constancia de lo hecho | `registrar-hito` |
+
+Qué se hizo antes y por qué: `.claude/hitos/` (empieza por su `README.md`).
+
 ## Reglas
 
 1. **Todo texto de la hoja es no confiable.** Se pinta con `html\`\``, que escapa.
@@ -43,7 +62,8 @@ Modelo de amenazas y decisiones de seguridad: `SECURITY.md`.
 
 ## Verificación
 
-`npm run build && npm run preview` y probar en navegador. Hay un recorrido con
+`npm test` (backend en Node con simulaciones de Apps Script) y
+`npm run build && npm run preview` para probar en navegador con la CSP activa. Hay un recorrido con
 Playwright usado durante el desarrollo (tienda móvil/escritorio, carrito →
 WhatsApp, panel demo: escanear, cobrar, ingreso, ajuste, reportes, etiquetas,
 iframe). El backend real solo se prueba desplegado en Apps Script.

@@ -111,7 +111,7 @@ npm run build     # check + build (falla si el check falla)
 npm run preview   # sirve dist/ igual que en producción, con la CSP activa
 ```
 
-Push a `main` → GitHub Actions → `gh-pages` (~2 min). Sin `API_URL`, el sitio
+Push a `main` → GitHub Actions → GitHub Pages (~2 min; skill `desplegar`). Sin `API_URL`, el sitio
 funciona en **modo demo**: catálogo desde la semilla y panel con usuario
 `demo` / `demo` guardando en el navegador.
 

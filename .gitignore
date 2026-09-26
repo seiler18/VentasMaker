@@ -16,3 +16,8 @@ scraping/logo.jpg
 *.xlsx
 *.csv
 .env*
+
+# Ajustes de Claude Code de esta máquina (los del repo van en .claude/settings.json)
+# y el estado del navegador de playwright-cli, que puede guardar cookies y sesiones.
+.claude/settings.local.json
+.playwright-cli/

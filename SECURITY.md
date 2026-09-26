@@ -70,9 +70,9 @@ Pages. `npm ci --ignore-scripts`, `npm audit`, acciones fijadas por SHA.
 | L4 | Baja | Clave inicial en el registro de ejecución, sin cambio forzado | **Corregido** (cambio obligatorio) |
 | L5 | Baja | CI con permiso de escritura y scripts de instalación | **Corregido** |
 | — | Info | Horario malformado rompía el catálogo | **Corregido** |
-| L6 | Baja | `cambiarClave` no limitaba los intentos de «clave actual»: con un token robado se podía adivinar la clave por fuerza bruta y quedarse con la cuenta pasadas las 6 h de la sesión | **Corregido** en el código (2026-09-26); vale en producción cuando se redespliegue |
+| L6 | Baja | `cambiarClave` no limitaba los intentos de «clave actual»: con un token robado se podía adivinar la clave por fuerza bruta y quedarse con la cuenta pasadas las 6 h de la sesión | **Corregido** (2026-09-26), redesplegado en producción el mismo día |
 | L7 | Baja | El freno global (20 logins/minuto) lo puede agotar cualquiera sin cuenta: mientras dure el ataque, nadie inicia sesión | Aceptado: Apps Script no entrega la IP del cliente, así que no hay freno por origen; sin el global, el mismo ataque agota la cuota del dueño y tumba también catálogo y caja. Las sesiones abiertas siguen |
-| I2 | Info | `vender` buscaba los productos en un objeto con prototipo: un id `__proto__` pasaba como «existe» (sin efecto real: la venta salía vacía o fallaba) | **Corregido** (2026-09-26), mismo redespliegue que L6 |
+| I2 | Info | `vender` buscaba los productos en un objeto con prototipo: un id `__proto__` pasaba como «existe» (sin efecto real: la venta salía vacía o fallaba) | **Corregido** (2026-09-26), redesplegado con L6 |
 
 ## Lo que queda en manos de la dueña (importante)
 
@@ -91,9 +91,8 @@ Pages. `npm ci --ignore-scripts`, `npm audit`, acciones fijadas por SHA.
    hoja y en la cuenta de GitHub: quien entra a cualquiera de las dos controla el
    sistema completo.
 4. Redesplegar Apps Script como «versión nueva» de la misma implementación tras
-   cada cambio de `Code.gs`. **Pendiente al 2026-09-26**: pegar el `Code.gs`
-   actual (L6 e I2) y publicar una versión nueva; hasta entonces producción
-   sigue con el código anterior.
+   cada cambio de `Code.gs` (skill `desplegar-backend`). Al día: el último
+   redespliegue (L6 e I2) es del 2026-09-26.
 
 ## Sobre el sitio anterior (catalogo.treinta.co)
 
