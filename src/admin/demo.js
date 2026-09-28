@@ -90,12 +90,26 @@ const ACC = {
     guardar(); return { id: d.id, sku: d.sku }
   },
   eliminarProducto: (b) => { db.productos.find((p) => p.id === b.id).visible = false; guardar(); return {} },
+  // Uno ({id, delta | nuevo}) o un lote ({items}), todo o nada, como Code.gs.
   ajustarStock: (b) => {
-    const p = db.productos.find((x) => x.id === b.id)
-    const final = b.nuevo !== undefined && b.nuevo !== '' ? Number(b.nuevo) : p.stock + Number(b.delta)
-    if (final < 0) falla('Stock no válido')
-    db.movimientos.push({ fecha: new Date().toISOString(), usuario: 'demo', producto_id: p.id, nombre: p.nombre, tipo: b.tipo, delta: final - p.stock, stock_final: final, nota: b.nota })
-    p.stock = final; guardar(); return { stock: final }
+    const lote = Array.isArray(b.items)
+    const items = lote ? b.items : [b]
+    if (!items.length) falla('El ajuste no tiene productos')
+    const cambios = items.map((it) => {
+      const p = db.productos.find((x) => x.id === it.id)
+      if (!p) falla('Producto no encontrado')
+      const final = !lote && it.nuevo !== undefined && it.nuevo !== '' ? Number(it.nuevo) : p.stock + Number(it.delta)
+      if (!(final >= 0)) falla('Stock no válido')
+      return { p, final }
+    })
+    const fecha = new Date().toISOString()
+    cambios.forEach(({ p, final }) => {
+      if (final === p.stock) return
+      db.movimientos.push({ fecha, usuario: 'demo', producto_id: p.id, nombre: p.nombre, tipo: b.tipo, delta: final - p.stock, stock_final: final, nota: b.nota })
+      p.stock = final
+    })
+    guardar()
+    return lote ? { stock: cambios.map(({ p }) => ({ id: p.id, stock: p.stock })) } : { stock: cambios[0].final }
   },
   subirImagen: () => falla('La subida de imágenes necesita el backend'),
   reporte: (b) => {
@@ -131,7 +145,7 @@ export async function llamarDemo(accion, datos = {}) {
   if (!ACC[accion]) throw new Error('Acción no válida')
   // Un poco de espera para que la interfaz se comporte como con red real.
   await new Promise((r) => setTimeout(r, 120))
-  return { ok: true, ...structuredClone(ACC[accion](structuredClone(datos))) }
+  return { ok: true, srv: 2, ...structuredClone(ACC[accion](structuredClone(datos))) }
 }
 
 export function reiniciarDemo() {

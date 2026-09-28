@@ -1,5 +1,6 @@
 /* AJUSTES — datos de la tienda (los que ve el catálogo) y la clave propia. */
-import { html, crudo, pintar, $, aviso } from '../lib/dom.js'
+import { html, crudo, pintar, $ } from '../lib/dom.js'
+import { aviso, conBoton, celebrar, panelError, sacudir } from '../lib/efectos.js'
 import { leerHorario } from '../lib/horario.js'
 import { llamar, esAdmin, demo, sesion } from './estado.js'
 import { token } from '../lib/api.js'
@@ -10,7 +11,7 @@ const DIAS = [['lun', 'Lunes'], ['mar', 'Martes'], ['mie', 'Miércoles'], ['jue'
 export default function ajustes(el) {
   pintar(el, html`
     <section class="ajustes">
-      ${esAdmin() && !sesion.debeCambiar ? html`<div class="panel-bloque" id="bloque-tienda"><p class="vacio">Cargando…</p></div>` : ''}
+      ${esAdmin() && !sesion.debeCambiar ? html`<div class="panel-bloque" id="bloque-tienda"><span class="linea-esq corta"></span><span class="bloque-esq"></span></div>` : ''}
       <div class="panel-bloque">
         <h2>Cambiar mi clave</h2>
         <form class="form-grid" id="form-clave">
@@ -26,12 +27,14 @@ export default function ajustes(el) {
   $('#form-clave', el).addEventListener('submit', async (e) => {
     e.preventDefault()
     const f = e.target
-    if (f.nueva.value !== f.repite.value) return aviso('Las claves nuevas no coinciden', 'error')
+    if (f.nueva.value !== f.repite.value) { sacudir(f.repite); return aviso('Las claves nuevas no coinciden', 'error') }
     try {
-      const r = await llamar('cambiarClave', { actual: f.actual.value, nueva: f.nueva.value })
+      const r = await conBoton($('[type=submit]', f), () => llamar('cambiarClave', { actual: f.actual.value, nueva: f.nueva.value }))
+      if (!r) return
       // El backend cerró todas las sesiones de la cuenta y devuelve una nueva.
       if (r.token) token.set(r.token)
-      f.reset(); aviso('Clave cambiada')
+      f.reset()
+      await celebrar({ titulo: 'Clave cambiada', detalle: 'Las demás sesiones de tu cuenta se cerraron.' })
       if (sesion.debeCambiar) window.dispatchEvent(new Event('vm:clave-cambiada'))
     } catch (err) { aviso(err.message, 'error') }
   })
@@ -41,7 +44,10 @@ export default function ajustes(el) {
   async function cargarTienda() {
     const caja = $('#bloque-tienda', el)
     let cfg
-    try { cfg = { ...TIENDA, ...(await llamar('config')).config } } catch (err) { caja.textContent = err.message; return }
+    try { cfg = { ...TIENDA, ...(await llamar('config')).config } } catch (err) {
+      if (caja.isConnected) panelError(caja, { compacto: true, titulo: 'No se pudieron cargar los datos de la tienda', detalle: err.message, reintentar: cargarTienda })
+      return
+    }
     const hor = leerHorario(cfg.horario)
     pintar(caja, html`
       <h2>Datos de la tienda</h2>
@@ -75,15 +81,15 @@ export default function ajustes(el) {
         horario[k] = a && c ? `${a}-${c}` : ''
       })
       const tel = String(fd.get('tienda_telefono')).replace(/\D/g, '')
-      if (tel.length < 9) return aviso('Revisa el número de WhatsApp (ej. 56912345678)', 'error')
+      if (tel.length < 9) { sacudir(e.target.tienda_telefono); return aviso('Revisa el número de WhatsApp (ej. 56912345678)', 'error') }
       try {
-        await llamar('guardarConfig', { config: {
+        await conBoton($('[type=submit]', e.target), () => llamar('guardarConfig', { config: {
           tienda_nombre: fd.get('tienda_nombre'), tienda_telefono: tel, tienda_direccion: fd.get('tienda_direccion'),
           tienda_ciudad: fd.get('tienda_ciudad'), mensaje_whatsapp: fd.get('mensaje_whatsapp'), horario: JSON.stringify(horario),
           retiro: fd.get('retiro') ? 'si' : 'no', despacho: fd.get('despacho') ? 'si' : 'no',
           mostrar_agotados: fd.get('mostrar_agotados') ? 'si' : 'no', email_reporte: fd.get('email_reporte'),
-        } })
-        aviso('Datos guardados')
+        } }))
+        aviso(demo ? 'Datos guardados (solo en este navegador)' : 'Datos guardados · ya se ven en el catálogo')
       } catch (err) { aviso(err.message, 'error') }
     })
   }

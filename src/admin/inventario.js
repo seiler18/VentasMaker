@@ -3,8 +3,12 @@
    El stock NO se edita en la ficha del producto: se cambia con un ajuste
    (ingreso, corrección o merma) que queda registrado en Movimientos con
    usuario, fecha y nota. Es la diferencia entre "el stock es 3" y "el stock
-   es 3 porque el martes alguien registró 2 prendas dañadas". */
-import { html, crudo, pintar, $, aviso } from '../lib/dom.js'
+   es 3 porque el martes alguien registró 2 prendas dañadas".
+
+   Guardar no recarga la hoja entera: lo guardado se aplica en la copia local
+   y la fila se ilumina; la recarga completa, si hace falta, va por detrás. */
+import { html, crudo, pintar, $ } from '../lib/dom.js'
+import { aviso, conBoton, destellar, panelError, sacudir } from '../lib/efectos.js'
 import { clp, fechaHora } from '../lib/formato.js'
 import { icono } from '../lib/iconos.js'
 import { urlImagen, prepararImagen } from '../lib/imagen.js'
@@ -21,10 +25,7 @@ export default function inventarioVista(el) {
     <section class="inv">
       <div class="inv-barra">
         <input class="entrada" id="inv-q" type="search" placeholder="Buscar por nombre, SKU o código" aria-label="Buscar">
-        <select class="entrada" id="inv-cat" aria-label="Categoría">
-          <option value="">Todas las categorías</option>
-          ${inventario.categorias().map((c) => html`<option>${c}</option>`)}
-        </select>
+        <select class="entrada" id="inv-cat" aria-label="Categoría"></select>
         <select class="entrada" id="inv-filtro" aria-label="Filtro">
           <option value="todos">Todos</option>
           <option value="bajo">Stock bajo</option>
@@ -36,12 +37,15 @@ export default function inventarioVista(el) {
         <button class="btn btn-primario" type="button" id="inv-nuevo">${icono.mas} Nuevo producto</button>
       </div>
       <p class="inv-resumen" id="inv-resumen"></p>
-      <div class="tabla-envoltura">
-        <table class="tabla inv-tabla">
-          <thead><tr><th scope="col"><span class="oculto-visual">Foto</span></th><th scope="col">Producto</th><th scope="col">Categoría</th>
-            <th scope="col" class="num">Precio</th><th scope="col" class="num">Stock</th><th scope="col"><span class="oculto-visual">Acciones</span></th></tr></thead>
-          <tbody id="inv-filas"></tbody>
-        </table>
+      <div id="inv-cuerpo">
+        <div class="tabla-envoltura">
+          <table class="tabla inv-tabla">
+            <thead><tr><th scope="col"><span class="oculto-visual">Foto</span></th><th scope="col">Producto</th><th scope="col">Categoría</th>
+              <th scope="col" class="num">Precio</th><th scope="col" class="num">Stock</th><th scope="col"><span class="oculto-visual">Acciones</span></th></tr></thead>
+            <tbody id="inv-filas"></tbody>
+          </table>
+        </div>
+        <div id="inv-error"></div>
       </div>
       <button class="btn btn-borde mas-filas" type="button" id="inv-mas" hidden>Mostrar más</button>
     </section>
@@ -59,14 +63,15 @@ export default function inventarioVista(el) {
     }).sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
   }
 
-  function pintarFilas() {
-    const l = lista()
-    const todos = inventario.todos()
-    $('#inv-resumen', el).textContent =
-      `${l.length} de ${todos.length} productos · ${todos.reduce((s, p) => s + Math.max(0, p.stock), 0)} unidades en stock · valor a precio de venta ${clp(todos.reduce((s, p) => s + Math.max(0, p.stock) * p.precio, 0))}`
-    pintar($('#inv-filas', el), l.slice(0, f.max).map((p) => {
-      const bajo = p.stock <= Math.max(p.stock_minimo || 0, 1)
-      return html`
+  function pintarCategorias() {
+    const sel = $('#inv-cat', el)
+    pintar(sel, html`<option value="">Todas las categorías</option>${inventario.categorias().map((c) => html`<option>${c}</option>`)}`)
+    sel.value = f.cat
+  }
+
+  function fila(p) {
+    const bajo = p.stock <= Math.max(p.stock_minimo || 0, 1)
+    return html`
       <tr data-id="${p.id}" class="${p.visible ? '' : 'fila-oculta'}">
         <td>${urlImagen(p.imagen) ? html`<img src="${urlImagen(p.imagen)}" alt="" width="44" height="44" loading="lazy">` : html`<span class="sin-foto mini">${icono.foto}</span>`}</td>
         <td><p class="inv-nombre">${p.nombre}</p><p class="inv-meta">${p.sku}${p.codigo ? html` · ${icono.codigo} ${p.codigo}` : ''}${p.visible ? '' : ' · oculto'}</p></td>
@@ -75,8 +80,32 @@ export default function inventarioVista(el) {
         <td class="num"><span class="etiqueta ${p.stock <= 0 ? 'etiqueta-error' : bajo ? 'etiqueta-aviso' : ''}">${p.stock}</span></td>
         <td class="acciones"><button class="btn btn-borde btn-chico" type="button" data-editar>${icono.editar} Editar</button></td>
       </tr>`
-    }))
+  }
+
+  function pintarFilas(destacar) {
+    const cuerpo = $('#inv-filas', el)
+    const err = $('#inv-error', el)
+    err.innerHTML = ''
+    if (!inventario.hayDatos()) {
+      $('#inv-mas', el).hidden = true
+      if (inventario.estado === 'error') {
+        pintar(cuerpo, '')
+        $('#inv-resumen', el).textContent = ''
+        panelError(err, { titulo: 'No se pudo cargar el inventario', detalle: inventario.error?.message || '', reintentar: () => inventario.recargar() })
+        return
+      }
+      $('#inv-resumen', el).textContent = 'Cargando inventario…'
+      pintar(cuerpo, Array.from({ length: 8 }, () => html`<tr class="fila-esqueleto"><td><span class="linea-esq cuadro"></span></td><td><span class="linea-esq"></span><span class="linea-esq corta"></span></td><td><span class="linea-esq corta"></span></td><td></td><td></td><td></td></tr>`))
+      return
+    }
+    const l = lista()
+    const todos = inventario.todos()
+    $('#inv-resumen', el).textContent =
+      `${l.length} de ${todos.length} productos · ${todos.reduce((s, p) => s + Math.max(0, p.stock), 0)} unidades en stock · valor a precio de venta ${clp(todos.reduce((s, p) => s + Math.max(0, p.stock) * p.precio, 0))}`
+    pintar(cuerpo, l.length ? l.slice(0, f.max).map(fila)
+      : html`<tr><td colspan="6" class="vacio">${f.q || f.cat || f.filtro !== 'todos' ? 'Ningún producto coincide con el filtro.' : 'Todavía no hay productos. Crea el primero con «Nuevo producto».'}</td></tr>`)
     $('#inv-mas', el).hidden = l.length <= f.max
+    if (destacar) destellar($(`tr[data-id="${CSS.escape(destacar)}"]`, cuerpo))
   }
 
   /* ---------- ficha de producto ---------- */
@@ -86,7 +115,7 @@ export default function inventarioVista(el) {
     const nuevo = !p
     p ||= { nombre: '', descripcion: '', categoria: '', precio: '', costo: '', stock: 0, stock_minimo: 1, codigo: '', visible: true, imagen: '' }
     const d = $('#dlg-prod')
-    const imgActual = { ruta: p.imagen }
+    const imgActual = { ruta: p.imagen, subiendo: false }
     pintar(d, html`
       <div class="dialogo-cab"><h2 id="dlg-prod-t">${nuevo ? 'Nuevo producto' : p.nombre}</h2>
         <button class="btn btn-icono" type="button" data-cerrar aria-label="Cerrar">${icono.cerrar}</button></div>
@@ -131,9 +160,9 @@ export default function inventarioVista(el) {
         <details class="historial" id="historial"><summary>Ver movimientos</summary><div id="movs"></div></details>
       </section>`}
       <div class="dialogo-pie">
-        ${nuevo ? '' : html`<button class="btn btn-peligro" type="button" id="ocultar-prod">${p.visible ? 'Ocultar del catálogo' : 'Ya está oculto'}</button>`}
+        ${nuevo ? '' : html`<button class="btn btn-peligro" type="button" id="ocultar-prod" ${crudo(p.visible ? '' : 'disabled')}>${p.visible ? 'Ocultar del catálogo' : 'Ya está oculto'}</button>`}
         <button class="btn btn-borde" type="button" data-cerrar>Cancelar</button>
-        <button class="btn btn-primario" type="submit" form="form-prod">Guardar</button>
+        <button class="btn btn-primario" type="submit" form="form-prod">${nuevo ? 'Crear producto' : 'Guardar'}</button>
       </div>`)
     d.showModal()
 
@@ -141,16 +170,21 @@ export default function inventarioVista(el) {
       const archivo = e.target.files[0]
       if (!archivo) return
       const previa = $('#foto-previa', d)
-      previa.classList.add('cargando')
+      const antes = previa.innerHTML
+      previa.classList.add('subiendo')
+      imgActual.subiendo = true
       try {
         const img = await prepararImagen(archivo)
         pintar(previa, html`<img src="${img.previa}" alt="">`)
         const r = await llamar('subirImagen', { base64: img.base64, tipo: img.tipo })
         imgActual.ruta = r.url
-        aviso('Foto subida; guarda el producto para aplicarla')
+        destellar(previa)
+        aviso('Foto subida · guarda el producto para aplicarla')
       } catch (err) {
-        aviso(err.message, 'error')
-      } finally { previa.classList.remove('cargando') }
+        previa.innerHTML = antes
+        sacudir(previa)
+        aviso(`No se pudo subir la foto: ${err.message}`, 'error')
+      } finally { previa.classList.remove('subiendo'); imgActual.subiendo = false }
     })
 
     $('#escanear-codigo', d).addEventListener('click', async () => {
@@ -159,7 +193,9 @@ export default function inventarioVista(el) {
       v.hidden = false
       try {
         pararCamara = await iniciarEscaner(v, (codigo) => {
-          $('[name=codigo]', d).value = codigo
+          const c = $('[name=codigo]', d)
+          c.value = codigo
+          destellar(c)
           pararCamara?.(); pararCamara = null; v.hidden = true
         })
       } catch { v.hidden = true; aviso('No se pudo abrir la cámara', 'error') }
@@ -175,59 +211,79 @@ export default function inventarioVista(el) {
         visible: fd.get('visible') === 'on', imagen: imgActual.ruta,
       }
       const err = $('#error-prod', d)
-      if (!datos.nombre) return (err.textContent = 'El nombre es obligatorio.')
-      if (!(datos.precio >= 0) || fd.get('precio') === '') return (err.textContent = 'Revisa el precio.')
+      const b = $('[type=submit][form=form-prod]', d)
+      const mal = (msg, campo) => { err.textContent = msg; sacudir(campo ? $(`[name=${campo}]`, d) : b); $(`[name=${campo}]`, d)?.focus() }
+      if (imgActual.subiendo) return mal('Espera a que termine de subir la foto.')
+      if (!datos.nombre) return mal('El nombre es obligatorio.', 'nombre')
+      if (!(datos.precio >= 0) || fd.get('precio') === '') return mal('Revisa el precio.', 'precio')
       if (datos.codigo) {
         const otro = inventario.porCodigo(datos.codigo)
-        if (otro && otro.id !== p.id) return (err.textContent = `Ese código ya lo tiene: ${otro.nombre}`)
+        if (otro && otro.id !== p.id) return mal(`Ese código ya lo tiene: ${otro.nombre}`, 'codigo')
       }
-      const b = $('[type=submit][form=form-prod]', d)
-      b.disabled = true
+      err.textContent = ''
       try {
-        await llamar('guardarProducto', { producto: datos })
-        await inventario.recargar()
-        aviso(nuevo ? 'Producto creado' : 'Cambios guardados')
+        const r = await conBoton(b, () => llamar('guardarProducto', { producto: datos }))
+        if (!r) return
+        const { id: _, stock, ...cambios } = datos
+        if (nuevo) inventario.aplicar(r.id, { ...cambios, sku: r.sku, stock: Math.max(0, stock) })
+        else inventario.aplicar(p.id, cambios)
         d.close()
-        pintarFilas()
-      } catch (x) { err.textContent = x.message; b.disabled = false }
+        // alCambiar ya repintó; se ilumina la fila guardada.
+        pintarFilas(r.id || p.id)
+        aviso(nuevo ? `Producto creado · ${r.sku}` : 'Cambios guardados')
+        if (nuevo) inventario.refrescar()
+      } catch (x) { err.textContent = x.message }
     })
 
     $('#form-ajuste', d)?.addEventListener('submit', async (e) => {
       e.preventDefault()
-      const fd = new FormData(e.target)
+      const form = e.target
+      const fd = new FormData(form)
       const n = Number(fd.get('cantidad'))
-      if (!Number.isInteger(n)) return aviso('Escribe una cantidad entera', 'error')
+      if (!Number.isInteger(n) || fd.get('cantidad') === '') {
+        sacudir($('[name=cantidad]', form))
+        return aviso('Escribe una cantidad entera', 'error')
+      }
       const cuerpo = { id: p.id, tipo: fd.get('tipo'), nota: fd.get('nota') }
       if (fd.get('como') === 'total') cuerpo.nuevo = n
       else cuerpo.delta = fd.get('tipo') === 'merma' ? -Math.abs(n) : n
       try {
-        const r = await llamar('ajustarStock', cuerpo)
+        const r = await conBoton($('[type=submit]', form), () => llamar('ajustarStock', cuerpo))
+        if (!r) return
+        const antes = p.stock
         inventario.fijarStock(p.id, r.stock)
-        $('#stock-actual', d).textContent = r.stock
-        e.target.reset()
-        aviso(`Stock actualizado: ${r.stock}`)
-        pintarFilas()
+        const cifra = $('#stock-actual', d)
+        cifra.textContent = r.stock
+        cifra.classList.remove('salta'); void cifra.offsetWidth; cifra.classList.add('salta')
+        form.reset()
+        aviso(`Stock de ${p.nombre}: ${antes} → ${r.stock}`)
+        pintarFilas(p.id)
         if ($('#historial', d).open) cargarMovs()
       } catch (x) { aviso(x.message, 'error') }
     })
 
     const cargarMovs = async () => {
       const caja = $('#movs', d)
+      pintar(caja, html`<p class="ayuda"><span class="rueda" aria-hidden="true"></span> Cargando movimientos…</p>`)
       try {
         const { movimientos } = await llamar('movimientos', { id: p.id })
         pintar(caja, !movimientos.length ? html`<p class="ayuda">Sin movimientos registrados.</p>` : html`
           <table class="tabla tabla-densa"><thead><tr><th>Fecha</th><th>Tipo</th><th class="num">Δ</th><th class="num">Queda</th><th>Usuario</th><th>Nota</th></tr></thead>
           <tbody>${movimientos.map((m) => html`<tr><td>${fechaHora(m.fecha)}</td><td>${m.tipo}</td><td class="num">${m.delta > 0 ? '+' : ''}${m.delta}</td><td class="num">${m.stock_final}</td><td>${m.usuario}</td><td>${m.nota}</td></tr>`)}</tbody></table>`)
-      } catch (x) { caja.textContent = x.message }
+      } catch (x) {
+        panelError(caja, { compacto: true, titulo: 'No se pudieron cargar los movimientos', detalle: x.message, reintentar: cargarMovs })
+      }
     }
     $('#historial', d)?.addEventListener('toggle', (e) => { if (e.target.open) cargarMovs() })
 
-    $('#ocultar-prod', d)?.addEventListener('click', async () => {
+    $('#ocultar-prod', d)?.addEventListener('click', async (e) => {
       if (!p.visible || !confirm(`¿Ocultar "${p.nombre}" del catálogo? Sus ventas pasadas se conservan.`)) return
       try {
-        await llamar('eliminarProducto', { id: p.id })
-        await inventario.recargar()
-        d.close(); pintarFilas(); aviso('Producto oculto')
+        await conBoton(e.currentTarget, () => llamar('eliminarProducto', { id: p.id }))
+        inventario.aplicar(p.id, { visible: false })
+        d.close()
+        pintarFilas(p.id)
+        aviso(`«${p.nombre}» ya no aparece en el catálogo`)
       } catch (x) { aviso(x.message, 'error') }
     })
   }
@@ -242,12 +298,17 @@ export default function inventarioVista(el) {
   $('#inv-filtro', el).addEventListener('change', (e) => { f.filtro = e.target.value; f.max = PAGINA; pintarFilas() })
   $('#inv-mas', el).addEventListener('click', () => { f.max += PAGINA; pintarFilas() })
   $('#inv-nuevo', el).addEventListener('click', () => abrirFicha(null))
-  $('#inv-csv', el).addEventListener('click', () => descargarCSV('inventario', lista(),
-    ['sku', 'codigo', 'nombre', 'categoria', 'precio', 'costo', 'stock', 'stock_minimo', 'visible']))
+  $('#inv-csv', el).addEventListener('click', () => {
+    const l = lista()
+    descargarCSV('inventario', l, ['sku', 'codigo', 'nombre', 'categoria', 'precio', 'costo', 'stock', 'stock_minimo', 'visible'])
+    aviso(`CSV descargado · ${l.length} productos`)
+  })
   el.addEventListener('click', (e) => {
     if (e.target.closest('[data-editar]')) abrirFicha(inventario.porId(e.target.closest('[data-id]').dataset.id))
   })
 
+  const baja = inventario.alCambiar(() => { pintarCategorias(); pintarFilas() })
+  pintarCategorias()
   pintarFilas()
-  return () => { pararCamara?.() }
+  return () => { pararCamara?.(); baja() }
 }

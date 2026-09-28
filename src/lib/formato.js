@@ -10,6 +10,14 @@ export function fechaHora(f) {
   return d.toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
 }
 
+/* Solo la hora ("10:49"). No sirve cortar fechaHora por espacios: en es-CL
+   termina en "a. m." y quedaba "m.". */
+export function hora(f) {
+  const d = new Date(f)
+  if (isNaN(d)) return ''
+  return d.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })
+}
+
 export function hoyISO(desplazarDias = 0) {
   const d = new Date(Date.now() + desplazarDias * 86400000)
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10)

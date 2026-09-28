@@ -77,7 +77,8 @@ buena, revisa que no esté bloqueada (5 fallos → 15 min).
 | El front no conecta tras actualizar | Se creó una implementación nueva | Poner la URL nueva en `src/config.js` y desplegar el front, o volver a la implementación anterior |
 | «Falta la hoja …» / «Falta ejecutar instalar()» | Hoja renombrada o instalación incompleta | `instalar()` otra vez: no borra, solo completa |
 | Se perdió la clave del admin | — | Ejecutar `restablecerAdmin` desde el editor; cierra sus sesiones |
-| Cambios hechos a mano en la hoja no salen en el catálogo | Caché de 5 min del catálogo | Esperar; los cambios del panel invalidan la caché al instante |
+| Cambios hechos a mano en la hoja no salen en el catálogo | Caché del catálogo (6 h). `onEdit` la invalida al editar *Productos* o *Config* a mano; los cambios del panel también | Si se editó por otra vía (script, importación), cualquier escritura del panel la invalida. Comprobar que el script está **vinculado** a la hoja (*Extensiones → Apps Script*): `onEdit` solo corre así |
+| El sitio tarda o la consola muestra `404` en `script.googleusercontent.com/macros/echo` | Apps Script lento o con ejecuciones en cola: el 404 del segundo salto llega **aunque la acción se ejecutó**. El 2026-09-28 una llamada vacía tardaba 17–73 s con la mitad en 404, y horas después 2 s, sin incidencia publicada por Google | El front lo tolera (copia local, reintentos, `idem`). Medir: `curl -sL -o /dev/null -w "%{http_code} %{time_total}s\n" "<API_URL>?accion=nada"`. En Apps Script → *Ejecuciones*: duración y errores; cientos por minuto = alguien martillando la URL |
 | `importarSemilla`: «Productos ya tiene datos» | Protección deliberada | No repetir; para cargar más, skill `importar-catalogo` (B) |
 
 Tras redesplegar un arreglo de seguridad, actualiza su fila en `SECURITY.md`

@@ -112,17 +112,7 @@ dialog[open] { animation: entra var(--medio) var(--curva-salida); }
 
 @keyframes entra { from { opacity: 0; transform: translateY(12px); } }
 
-/* ----- Avisos ----- */
-#avisos {
-  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
-  display: grid; gap: 8px; z-index: var(--z-avisos); width: min(100% - 32px, 420px);
-}
-.aviso {
-  padding: 12px 16px; border-radius: var(--radio-sm); background: var(--texto-fuerte);
-  color: var(--surface); font-size: var(--txt-ui); box-shadow: var(--sombra);
-  animation: entra var(--medio) var(--curva-salida);
-}
-.aviso-error { background: var(--error); color: var(--texto-sobre-primario); }
+/* Avisos, confirmaciones, errores y estado de red: efectos.css */
 
 .etiqueta {
   display: inline-flex; align-items: center; gap: 4px;

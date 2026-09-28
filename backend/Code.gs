@@ -51,6 +51,22 @@ const MAX_IMG_BYTES = 1.5 * 1024 * 1024;
 const MEDIOS_PAGO = ['efectivo', 'debito', 'credito', 'transferencia', 'otro'];
 const LOGINS_POR_MINUTO = 20;          // freno global: ver login_
 const MAX_REGISTRO = 5000;             // filas de Registro que se conservan
+const CATALOGO_SEG = 6 * 60 * 60;      // caché del catálogo: toda escritura la invalida
+const IDEM_SEG = 10 * 60;              // cuánto se recuerda la respuesta de una escritura
+const EN_CURSO_SEG = 6 * 60;           // lo que dura como máximo una ejecución
+
+/* Versión del contrato con el front. Viaja en cada respuesta (`srv`) para
+   que el front sepa qué puede pedir: con la 2, reintentar escrituras con
+   `idem` y mandar ajustes de stock en lote. Un front nuevo contra un
+   backend viejo sigue funcionando, solo que sin eso. */
+const VERSION_API = 2;
+
+/* Escrituras que aceptan clave de idempotencia (`idem`). Apps Script a veces
+   ejecuta la acción y aun así el navegador recibe un 404 o se queda sin
+   respuesta: sin esto, reintentar un cobro lo registraría dos veces.
+   cambiarClave no está: su respuesta trae un token y no debe quedar en caché. */
+const IDEMPOTENTES = ['vender', 'anularVenta', 'guardarProducto', 'eliminarProducto', 'ajustarStock',
+                      'subirImagen', 'guardarUsuario', 'guardarConfig'];
 
 /* Qué puede hacer cada rol. Lo que no aparece aquí no existe. */
 const PERMISOS = {
@@ -85,6 +101,7 @@ const CONFIG_PUBLICA = ['tienda_nombre', 'tienda_telefono', 'tienda_direccion', 
    ============================================================ */
 
 function doGet(e) {
+  memo_ = {};
   try {
     const accion = (e && e.parameter && e.parameter.accion) || 'catalogo';
     if (accion !== 'catalogo') return json_({ ok: false, error: 'Acción no válida' });
@@ -96,6 +113,7 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  memo_ = {};
   let body;
   try {
     if (!e || !e.postData || e.postData.contents.length > 4 * 1024 * 1024) {
@@ -124,7 +142,7 @@ function doPost(e) {
       registrar_(ses.usuario, 'denegado', accion);
       return json_({ ok: false, error: 'No tienes permiso para esto' });
     }
-    return json_({ ok: true, ...ACCIONES[accion](body, ses) });
+    return json_(conIdem_(accion, body, ses));
   } catch (err) {
     // Los errores "de usuario" se lanzan con ErrorVisible y su texto se
     // devuelve tal cual. Cualquier otro puede llevar detalles internos
@@ -139,7 +157,33 @@ class ErrorVisible extends Error {}
 function falla_(msg) { throw new ErrorVisible(msg); }
 
 function json_(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify(Object.assign({ srv: VERSION_API }, obj)))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* Ejecuta la acción una sola vez por clave `idem`. La clave va ligada al
+   usuario (otro no puede leer la respuesta ajena adivinándola). Mientras la
+   primera ejecución sigue en marcha, un reintento recibe `enCurso` en vez de
+   ejecutarla otra vez; cuando termina, recibe la misma respuesta. Si la
+   acción falla, la marca se borra: reintentar entonces es seguro. */
+function conIdem_(accion, body, ses) {
+  const idem = IDEMPOTENTES.indexOf(accion) >= 0 && typeof body.idem === 'string' &&
+               /^[A-Za-z0-9_-]{16,64}$/.test(body.idem) ? 'idem_' + sha256_(ses.usuario + ':' + body.idem) : '';
+  if (!idem) return { ok: true, ...ACCIONES[accion](body, ses) };
+  const cache = CacheService.getScriptCache();
+  const previo = cache.get(idem);
+  if (previo === 'en_curso') return { ok: false, error: 'La operación anterior aún se está procesando', enCurso: true };
+  if (previo) return Object.assign(JSON.parse(previo), { repetida: true });
+  cache.put(idem, 'en_curso', EN_CURSO_SEG);
+  let res;
+  try {
+    res = { ok: true, ...ACCIONES[accion](body, ses) };
+  } catch (err) {
+    cache.remove(idem);
+    throw err;
+  }
+  try { cache.put(idem, JSON.stringify(res), IDEM_SEG); } catch (e) { cache.remove(idem); }
+  return res;
 }
 
 /* ============================================================
@@ -366,21 +410,44 @@ const ACCIONES = {
     });
   },
 
+  /* Un producto ({id, delta | nuevo}) o un lote ({items: [{id, delta}]}): el
+     ingreso de mercadería escanea decenas de prendas, y una llamada por cada
+     una son decenas de viajes a Apps Script. El lote es todo o nada: si una
+     línea no vale, no se escribe ninguna. */
   ajustarStock: (b, ses) => {
     const tipo = ['ingreso', 'ajuste', 'merma'].indexOf(b.tipo) >= 0 ? b.tipo : 'ajuste';
+    const nota = texto_(b.nota, 200);
+    const lote = Array.isArray(b.items);
+    const items = lote ? b.items : [b];
+    if (!items.length || items.length > 200) falla_('El ajuste no tiene productos');
     return conBloqueo_(() => {
-      const p = leer_('productos').filas.find(x => x.id === String(b.id));
-      if (!p) falla_('Producto no encontrado');
-      const actual = Number(p.stock) || 0;
-      let final;
-      if (b.nuevo !== undefined && b.nuevo !== null && b.nuevo !== '') final = entero_(b.nuevo, -1);
-      else final = actual + entero_(b.delta, 0);
-      if (final < 0 || final > 1000000) falla_('Stock no válido');
-      if (final === actual) return { stock: actual };
-      actualizarFila_('productos', p._fila, { stock: final, actualizado: new Date() });
-      agregar_('movimientos', [[new Date(), ses.usuario, p.id, p.nombre, tipo, final - actual, final, texto_(b.nota, 200)]]);
-      invalidarCatalogo_();
-      return { stock: final };
+      const porId = Object.create(null);
+      leer_('productos').filas.forEach(p => porId[p.id] = p);
+      const cambios = [], vistos = Object.create(null);
+      items.forEach(it => {
+        const id = String(it.id || '');
+        const p = porId[id];
+        if (!p) falla_('Producto no encontrado');
+        if (vistos[id]) falla_('Producto repetido en el ajuste');
+        vistos[id] = true;
+        const actual = Number(p.stock) || 0;
+        let final;
+        if (!lote && it.nuevo !== undefined && it.nuevo !== null && it.nuevo !== '') final = entero_(it.nuevo, -1);
+        else final = actual + entero_(it.delta, 0);
+        if (final < 0 || final > 1000000) falla_('Stock no válido');
+        cambios.push({ p: p, actual: actual, final: final });
+      });
+      const ahora = new Date(), mov = [];
+      cambios.forEach(c => {
+        if (c.final === c.actual) return;
+        actualizarFila_('productos', c.p._fila, { stock: c.final, actualizado: ahora });
+        mov.push([ahora, ses.usuario, c.p.id, c.p.nombre, tipo, c.final - c.actual, c.final, nota]);
+      });
+      if (mov.length) {
+        agregar_('movimientos', mov);
+        invalidarCatalogo_();
+      }
+      return lote ? { stock: cambios.map(c => ({ id: c.p.id, stock: c.final })) } : { stock: cambios[0].final };
     });
   },
 
@@ -505,12 +572,23 @@ function catalogoPublico_() {
   let n = 0;
   for (let i = 0; i < txt.length; i += trozo) obj['cat_' + (n++)] = txt.slice(i, i + trozo);
   obj.cat_n = String(n);
-  try { cache.putAll(obj, 300); } catch (e) { /* sin caché: se sirve igual */ }
+  try { cache.putAll(obj, CATALOGO_SEG); } catch (e) { /* sin caché: se sirve igual */ }
   return res;
 }
 
 function invalidarCatalogo_() {
   CacheService.getScriptCache().remove('cat_n');
+}
+
+/* Disparador simple: quien corrige un precio o un stock A MANO en la
+   planilla lo ve en el catálogo al instante, sin esperar a que caduque la
+   caché (que dura horas porque las escrituras del panel ya la invalidan).
+   CacheService no pide autorización, así que funciona desde onEdit. */
+function onEdit(e) {
+  try {
+    const n = e && e.range && e.range.getSheet().getName();
+    if (n === NOMBRE_HOJA.productos || n === NOMBRE_HOJA.config) invalidarCatalogo_();
+  } catch (err) { /* nunca debe molestar al editar */ }
 }
 
 /* ============================================================
@@ -577,6 +655,7 @@ function semanaIso_(f) {
 /* Lo ejecuta el disparador diario (ver instalarDisparadores). Reescribe las
    cuatro hojas de resumen y, si hay correo configurado, manda el del día. */
 function generarReportes() {
+  memo_ = {};
   const ss = ss_();
   [['dia', 'Resumen diario'], ['semana', 'Resumen semanal'], ['mes', 'Resumen mensual'], ['anio', 'Resumen anual']]
     .forEach(([periodo, nombre]) => {
@@ -622,6 +701,7 @@ function generarReportes() {
       muestra UNA vez en el registro de ejecución: cópiala y cámbiala al
       entrar. No se guarda en ningún sitio legible. */
 function instalar() {
+  memo_ = {};
   const ss = ss_();
   Object.keys(HOJAS).forEach(k => {
     let h = ss.getSheetByName(NOMBRE_HOJA[k]);
@@ -834,20 +914,35 @@ function sha256_(s) {
    Por eso el identificador de la hoja se guarda una vez (la primera vez que
    se ejecuta algo desde el editor, donde getActive() sí funciona) y desde
    entonces se abre siempre por ese identificador, que no depende de nada. */
+/* Lo abierto se recuerda durante UNA ejecución (doGet/doPost lo vacían al
+   entrar): una venta de tres productos llamaba a openById y releía el
+   encabezado de la hoja una decena de veces, y cada llamada a Sheets cuesta. */
+let memo_ = {};
+
 function ss_() {
+  if (memo_.ss) return memo_.ss;
   const props = PropertiesService.getScriptProperties();
   let id = props.getProperty('SHEET_ID');
-  if (id) return SpreadsheetApp.openById(id);
+  if (id) return (memo_.ss = SpreadsheetApp.openById(id));
   const activa = SpreadsheetApp.getActive();
   if (!activa) throw new Error('Ejecuta instalar() una vez desde el editor de Apps Script antes de usar la aplicación web.');
   props.setProperty('SHEET_ID', activa.getId());
-  return activa;
+  return (memo_.ss = activa);
 }
 
 function hoja_(k) {
+  const hs = memo_.hojas || (memo_.hojas = {});
+  if (hs[k]) return hs[k];
   const h = ss_().getSheetByName(NOMBRE_HOJA[k]);
   if (!h) throw new Error('Falta la hoja ' + NOMBRE_HOJA[k] + '. Ejecuta instalar().');
-  return h;
+  return (hs[k] = h);
+}
+
+function cabecera_(k) {
+  const cs = memo_.cab || (memo_.cab = {});
+  if (cs[k]) return cs[k];
+  const h = hoja_(k);
+  return (cs[k] = h.getRange(1, 1, 1, h.getLastColumn()).getValues()[0].map(c => String(c).trim()));
 }
 
 /* Lee una hoja como objetos, localizando cada columna por su ENCABEZADO: así
@@ -856,6 +951,7 @@ function leer_(k) {
   const h = hoja_(k);
   const datos = h.getDataRange().getValues();
   const cab = datos.shift() || [];
+  (memo_.cab || (memo_.cab = {}))[k] = cab.map(c => String(c).trim());
   const filas = datos.map((r, i) => {
     const o = { _fila: i + 2 };
     cab.forEach((c, j) => { if (c) o[String(c).trim()] = r[j]; });
@@ -866,7 +962,7 @@ function leer_(k) {
 
 function actualizarFila_(k, fila, cambios) {
   const h = hoja_(k);
-  const cab = h.getRange(1, 1, 1, h.getLastColumn()).getValues()[0].map(c => String(c).trim());
+  const cab = cabecera_(k);
   Object.keys(cambios).forEach(c => {
     const j = cab.indexOf(c);
     if (j >= 0) h.getRange(fila, j + 1).setValue(celda_(cambios[c]));
@@ -878,7 +974,7 @@ function agregar_(k, filas) {
   const h = hoja_(k);
   // Las filas llegan en el orden de HOJAS[k]; se recolocan según el
   // encabezado real por si alguien movió columnas en la planilla.
-  const cab = h.getRange(1, 1, 1, h.getLastColumn()).getValues()[0].map(c => String(c).trim());
+  const cab = cabecera_(k);
   const orden = HOJAS[k];
   const salida = filas.map(f => cab.map(c => {
     const j = orden.indexOf(c);

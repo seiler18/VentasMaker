@@ -476,3 +476,10 @@
   .producto-info { padding: 8px; }
   .paso { gap: 2px; }
 }
+
+/* ----- Sin catálogo (ni en vivo, ni copia, ni foto publicada) ----- */
+.sin-catalogo { min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 16px; padding: 24px var(--margen); background: var(--degradado); }
+.sin-catalogo .logo { margin-top: 0; width: 96px; height: 96px; box-shadow: var(--sombra-alta); }
+.sin-catalogo #error-catalogo { width: min(100%, 520px); }
+.sin-catalogo .panel-error { margin: 0; }
+.sin-catalogo .btn-whatsapp { box-shadow: var(--sombra); }

@@ -69,6 +69,15 @@ Reglas que no son opcionales:
 - **El stock solo cambia por `vender`, `anularVenta` y `ajustarStock`**, que
   dejan fila en *Movimientos*. Si tu acción necesita mover stock, llama a esa
   lógica; no escribas la columna directamente.
+- **Si repetirla duplica algo** (registra, crea, suma), añádela a
+  `IDEMPOTENTES`: `doPost` la ejecuta una sola vez por clave `idem`, y el
+  front (`api.js`) la reintenta con la misma clave cuando Apps Script
+  devuelve un 404 o no contesta. Sin eso, el front no la reintenta y avisa
+  «no sabemos si se guardó». Prueba: dos `post` con el mismo `idem` → un
+  solo efecto y `repetida: true` en el segundo.
+- **Si cambia lo que el front puede pedir**, sube `VERSION_API` y haz que el
+  front lo compruebe (`capacidad` en `estado.js`): la dueña redespliega el
+  backend cuando puede, y el front nuevo debe seguir funcionando con el viejo.
 - **Nada sensible hacia el vendedor**: costo, márgenes, correo de reportes.
   El catálogo público (`catalogoPublico_`) solo expone campos de vitrina.
 - Una columna nueva: añádela al final de su lista en `HOJAS`. `instalar()` la

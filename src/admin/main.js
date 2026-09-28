@@ -1,12 +1,14 @@
 import '../styles/tokens.css'
 import '../styles/base.css'
 import '../styles/admin.css'
+import '../styles/efectos.css'
 
 import { protegerMarco } from '../lib/marco.js'
-import { html, pintar, $, $$, aviso } from '../lib/dom.js'
+import { html, pintar, $, $$ } from '../lib/dom.js'
+import { aviso, conBoton, panelError, sacudir, vigilarRed } from '../lib/efectos.js'
 import { icono } from '../lib/iconos.js'
-import { token, onSesionCaducada } from '../lib/api.js'
-import { demo, llamar, sesion, esAdmin, inventario } from './estado.js'
+import { token, onSesionCaducada, onActividad } from '../lib/api.js'
+import { demo, llamar, sesion, inventario, perfil } from './estado.js'
 import { reiniciarDemo } from './demo.js'
 
 import vender from './vender.js'
@@ -51,36 +53,46 @@ function pantallaLogin(msg = '') {
   $('#form-login').addEventListener('submit', async (e) => {
     e.preventDefault()
     const f = e.target
-    const b = $('button', f)
-    b.disabled = true
+    const err = $('.error-form', f)
+    err.textContent = ''
     try {
-      const r = await llamar('login', { usuario: f.usuario.value, clave: f.clave.value })
+      const r = await conBoton($('button', f), () => llamar('login', { usuario: f.usuario.value, clave: f.clave.value }))
+      if (!r) return
       token.set(r.token)
       Object.assign(sesion, { usuario: r.usuario, nombre: r.nombre, rol: r.rol, debeCambiar: !!r.debeCambiar })
-      await entrar()
-    } catch (err) {
-      $('.error-form', f).textContent = err.message
-      b.disabled = false
-      f.clave.value = ''
-      f.clave.focus()
+      perfil.guardar()
+      aviso(`Hola, ${r.nombre || r.usuario}`)
+      entrar()
+    } catch (x) {
+      err.textContent = x.message
+      sacudir(f)
+      // Un fallo de red no es una clave mala: no se borra lo escrito.
+      if (!x.red) { f.clave.value = ''; f.clave.focus() }
     }
   })
   $('[name=usuario]').focus()
 }
 
-async function entrar() {
+/* El armazón y la vista se pintan YA; el inventario llega por detrás y las
+   vistas se repintan solas (inventario.alCambiar). Antes se esperaba a la
+   hoja con la pantalla en blanco, y Apps Script puede tardar un minuto. */
+function entrar() {
   // Clave provisoria: el backend rechaza todo salvo cambiarla, así que el
   // panel solo muestra Ajustes hasta que se cambie.
   if (sesion.debeCambiar) {
     pintarShell()
     irA('ajustes')
-    aviso('Tu clave es provisoria: cámbiala para empezar a usar el panel.', 'error')
+    aviso('Tu clave es provisoria: cámbiala para empezar a usar el panel.', 'aviso')
     return
   }
-  pintar($('#app'), html`<p class="vacio">Cargando inventario…</p>`)
-  await inventario.recargar()
   pintarShell()
   irA(location.hash.slice(1))
+  inventario.recargar().catch((err) => {
+    if (err.sesion === false) return
+    aviso(inventario.hayDatos()
+      ? `No se pudo actualizar el inventario (${err.message}) Se usa la copia de hace un rato.`
+      : `No se pudo cargar el inventario: ${err.message}`, 'error')
+  })
 }
 
 function pintarShell() {
@@ -102,10 +114,11 @@ function pintarShell() {
     </header>
     <main class="contenido" id="vista"></main>`)
   $('#salir').addEventListener('click', salir)
-  $('#reiniciar-demo')?.addEventListener('click', async () => {
+  $('#reiniciar-demo')?.addEventListener('click', async (e) => {
     if (!confirm('¿Borrar las ventas y cambios de prueba de este navegador?')) return
+    const b = e.currentTarget
     reiniciarDemo()
-    await inventario.recargar()
+    await conBoton(b, () => inventario.recargar())
     irA(location.hash.slice(1))
     aviso('Demo reiniciada')
   })
@@ -127,37 +140,74 @@ function irA(id) {
   limpiarVista = v.vista(el) || null
 }
 
-async function salir() {
-  try { await llamar('logout') } catch { /* igual se cierra en local */ }
+function olvidarSesion() {
   token.borrar()
+  perfil.borrar()
+  inventario.vaciar()
   Object.assign(sesion, { usuario: '', nombre: '', rol: '', debeCambiar: false })
+}
+
+async function salir(e) {
+  // Se cierra en local aunque el servidor tarde: no se espera más de unos
+  // segundos por el logout (el token caduca solo en el servidor).
+  const espera = new Promise((r) => setTimeout(r, 4000))
+  await conBoton(e.currentTarget, () => Promise.race([llamar('logout').catch(() => {}), espera]))
+  olvidarSesion()
   pantallaLogin()
+  aviso('Sesión cerrada', 'info')
 }
 
 window.addEventListener('hashchange', () => { if (sesion.rol) irA(location.hash.slice(1)) })
-onSesionCaducada(() => pantallaLogin('Tu sesión caducó. Vuelve a entrar.'))
+onSesionCaducada(() => { olvidarSesion(); pantallaLogin('Tu sesión caducó. Vuelve a entrar.') })
 
 // Tras cambiar la clave provisoria, Ajustes avisa y se entra de verdad.
-window.addEventListener('vm:clave-cambiada', () => { sesion.debeCambiar = false; entrar() })
+window.addEventListener('vm:clave-cambiada', () => { sesion.debeCambiar = false; perfil.guardar(); entrar() })
 
 // Cierre de diálogos común a todas las vistas.
 document.addEventListener('click', (e) => {
   const c = e.target.closest('[data-cerrar]')
   if (c) c.closest('dialog').close()
-  else if (e.target.tagName === 'DIALOG') e.target.close()
+  else if (e.target.tagName === 'DIALOG' && !e.target.classList.contains('celebra')) e.target.close()
 })
 
+/* Con sesión abierta en esta pestaña (recargar, volver atrás): se pinta con
+   el perfil guardado y se confirma por detrás. Si el servidor dice que la
+   sesión ya no vale, onSesionCaducada lleva al login; si solo falla la red,
+   se sigue trabajando con lo guardado y el indicador de red lo cuenta. */
 async function arrancar() {
-  if (token.get()) {
-    try {
-      const r = await llamar('sesion')
-      Object.assign(sesion, r)
-      return await entrar()
-    } catch { token.borrar() }
+  if (!token.get()) return pantallaLogin()
+  const guardado = perfil.leer()
+  if (guardado?.rol) {
+    Object.assign(sesion, guardado)
+    inventario.restaurar()
+    entrar()
+    llamar('sesion').then((r) => {
+      const cambio = r.rol !== sesion.rol || !!r.debeCambiar !== sesion.debeCambiar
+      Object.assign(sesion, { usuario: r.usuario, nombre: r.nombre, rol: r.rol, debeCambiar: !!r.debeCambiar })
+      perfil.guardar()
+      if (cambio) entrar()
+    }).catch(() => { /* red: lo cuenta el indicador; caducada: onSesionCaducada */ })
+    return
   }
-  pantallaLogin()
+  pintar($('#app'), html`
+    <main class="login"><div class="login-caja verificando" role="status">
+      <span class="rueda" aria-hidden="true"></span><p>Verificando tu sesión…</p>
+    </div></main>`)
+  try {
+    const r = await llamar('sesion')
+    Object.assign(sesion, { usuario: r.usuario, nombre: r.nombre, rol: r.rol, debeCambiar: !!r.debeCambiar })
+    perfil.guardar()
+    entrar()
+  } catch (err) {
+    if (err.sesion === false) return   // onSesionCaducada ya mostró el login
+    const caja = document.createElement('main')
+    caja.className = 'contenido'
+    $('#app').replaceChildren(caja)
+    panelError(caja, { titulo: 'No pudimos conectar con la tienda', detalle: err.message, reintentar: arrancar })
+  }
 }
 
+vigilarRed(onActividad)
 arrancar().catch((err) => {
   console.error(err)
   aviso(err.message, 'error')

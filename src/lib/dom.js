@@ -39,21 +39,3 @@ export const $$ = (sel, raiz = document) => [...raiz.querySelectorAll(sel)]
 export function pintar(el, contenido) {
   el.innerHTML = valor(contenido)
 }
-
-/* Aviso breve abajo de la pantalla. textContent, nunca innerHTML: los
-   mensajes de error pueden traer texto del servidor. */
-export function aviso(msg, tipo = 'ok') {
-  let caja = document.getElementById('avisos')
-  if (!caja) {
-    caja = document.createElement('div')
-    caja.id = 'avisos'
-    caja.setAttribute('role', 'status')
-    caja.setAttribute('aria-live', 'polite')
-    document.body.append(caja)
-  }
-  const n = document.createElement('div')
-  n.className = `aviso aviso-${tipo}`
-  n.textContent = msg
-  caja.append(n)
-  setTimeout(() => n.remove(), tipo === 'error' ? 6000 : 3000)
-}

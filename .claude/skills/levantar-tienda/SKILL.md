@@ -72,6 +72,7 @@ git grep -n -i "ale ventas\|alerce\|monik10\|56950446613\|/VentasMaker/" -- ':!p
 | `backend/Code.gs` → `importarSemilla()` | la `url` del `catalogo.json` publicado de la tienda nueva |
 | `vite.config.js` | `base` según el paso 2 |
 | `index.html` | `<title>`, `description`, `og:title`, `og:image` (URL absoluta) |
+| `404.html` | `<title>` y el número de WhatsApp del botón |
 | `public/img/logo.webp`, `portada.webp`, `public/favicon.png` | identidad (skill `optimizar-imagenes` de WebMaker para el peso) |
 | `src/styles/tokens.css` | paleta: **solo aquí** hay colores (`npm run check` lo exige) |
 | `README.md`, `backend/PASO-A-PASO.md`, `SECURITY.md` | nombre de la tienda, URLs, `raw.githubusercontent.com/<repo>` |

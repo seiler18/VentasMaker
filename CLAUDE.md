@@ -16,6 +16,9 @@ Modelo de amenazas y decisiones de seguridad: `SECURITY.md`.
 | Router del panel, roles por pestaña | `src/admin/main.js` (`VISTAS`) |
 | Backend de mentira para el modo demo | `src/admin/demo.js` — debe imitar a `Code.gs` |
 | Escape de HTML | `src/lib/dom.js` (`html`, `crudo`) |
+| Avisos, ✓ de confirmación, botones que trabajan, pantalla de error, estado de red | `src/lib/efectos.js`, `src/styles/efectos.css` |
+| Página para direcciones que no existen | `404.html` (GitHub Pages la sirve sola) |
+| Foto del catálogo que se publica con el sitio | `scripts/foto-catalogo.js` → `data/vivo.json` (en el build) |
 | Cliente de la API | `src/lib/api.js`; URL en `src/config.js` |
 | Backend real | `backend/Code.gs` (`PERMISOS`, `ACCIONES`) |
 | Semilla del catálogo | `public/data/catalogo.json` (sale de `scraping/`) |
@@ -51,14 +54,25 @@ Qué se hizo antes y por qué: `.claude/hitos/` (empieza por su `README.md`).
    no se puede llamar. Ocultar un botón en el front no es control de acceso.
 4. **Escrituras en la hoja dentro de `conBloqueo_()`** y con valores por
    `celda_()` (inyección de fórmulas).
-5. **El stock solo cambia por `vender`, `anularVenta` y `ajustarStock`**, que
-   dejan fila en *Movimientos*. `guardarProducto` no toca el stock.
+5. **El stock solo cambia por `vender`, `anularVenta` y `ajustarStock`** (uno
+   o en lote con `items`), que dejan fila en *Movimientos*. `guardarProducto`
+   no toca el stock.
 6. **Cada vista cuelga sus listeners de su propio contenedor** (`main.js` crea
    uno nuevo por vista). Reutilizarlo hizo que los listeners de Vender
    reaccionaran en Etiquetas.
 7. Colores, tamaños y duraciones solo como tokens (`src/styles/tokens.css`).
 8. Tras cambiar `Code.gs`, redesplegar la aplicación web como **versión nueva**
    de la misma implementación (si no, la URL cambia).
+9. **Nunca esperar a Apps Script para pintar.** Se han medido de 2 a 70 s por
+   llamada y 404 intermitentes en `script.googleusercontent.com` aunque la
+   acción ya se ejecutó. La tienda pinta con copia local o `data/vivo.json` y
+   actualiza por detrás; el panel pinta con lo guardado en la pestaña.
+10. **Toda acción tiene respuesta visible**: lo que llama al servidor va en
+    `conBoton()`; al terminar, `aviso()` (o `celebrar()` si es importante:
+    venta, ingreso, pedido); si no carga, `panelError()` con Reintentar.
+11. **Una escritura nueva que duplicaría algo al repetirse → a `IDEMPOTENTES`**
+    en `Code.gs`. `api.js` reintenta escrituras solo con backend `srv ≥ 2` y
+    la misma clave `idem`; si no, informa «no sabemos si se guardó».
 
 ## Verificación
 
@@ -66,4 +80,7 @@ Qué se hizo antes y por qué: `.claude/hitos/` (empieza por su `README.md`).
 `npm run build && npm run preview` para probar en navegador con la CSP activa. Hay un recorrido con
 Playwright usado durante el desarrollo (tienda móvil/escritorio, carrito →
 WhatsApp, panel demo: escanear, cobrar, ingreso, ajuste, reportes, etiquetas,
-iframe). El backend real solo se prueba desplegado en Apps Script.
+iframe). Para probar la red mala sin tocar producción: interceptar
+`script.google.com` en Playwright y contestar con `doGet`/`doPost` del
+`Code.gs` cargado con las simulaciones de `tests/backend.test.mjs`, inyectando
+retrasos y 404 (hito 0006). El backend real solo se prueba desplegado en Apps Script.

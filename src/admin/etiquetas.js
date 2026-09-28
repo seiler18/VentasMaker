@@ -6,7 +6,8 @@
    EAN. Si el producto sí tiene código propio, se imprime ese.
 
    JsBarcode se carga solo al entrar aquí. */
-import { html, crudo, pintar, $, aviso } from '../lib/dom.js'
+import { html, crudo, pintar, $ } from '../lib/dom.js'
+import { aviso, conBoton, panelError } from '../lib/efectos.js'
 import { clp } from '../lib/formato.js'
 import { icono } from '../lib/iconos.js'
 import { inventario } from './estado.js'
@@ -44,6 +45,15 @@ export default function etiquetas(el) {
     .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 
   function pintarFilas() {
+    if (!inventario.hayDatos()) {
+      if (inventario.estado === 'error') {
+        pintar($('#etq-filas', el), html`<tr><td colspan="4" id="etq-error"></td></tr>`)
+        panelError($('#etq-error', el), { compacto: true, titulo: 'No se pudo cargar el inventario', detalle: inventario.error?.message || '', reintentar: () => inventario.recargar() })
+      } else {
+        pintar($('#etq-filas', el), Array.from({ length: 6 }, () => html`<tr class="fila-esqueleto"><td><span class="linea-esq"></span></td><td><span class="linea-esq corta"></span></td><td></td><td></td></tr>`))
+      }
+      return contar()
+    }
     pintar($('#etq-filas', el), lista().slice(0, 200).map((p) => html`
       <tr data-id="${p.id}">
         <td>${p.nombre}</td>
@@ -65,9 +75,15 @@ export default function etiquetas(el) {
   let espera
   $('#etq-q', el).addEventListener('input', (e) => { clearTimeout(espera); espera = setTimeout(() => { f.q = e.target.value; pintarFilas() }, 180) })
   $('#etq-filtro', el).addEventListener('change', (e) => { f.filtro = e.target.value; pintarFilas() })
-  $('#etq-todos', el).addEventListener('click', () => { lista().forEach((p) => { if (p.stock > 0) elegidos.set(p.id, Math.min(p.stock, 500)) }); pintarFilas() })
-  $('#etq-limpiar', el).addEventListener('click', () => { elegidos.clear(); pintarFilas() })
-  $('#etq-imprimir', el).addEventListener('click', imprimir)
+  $('#etq-todos', el).addEventListener('click', () => {
+    const antes = elegidos.size
+    lista().forEach((p) => { if (p.stock > 0) elegidos.set(p.id, Math.min(p.stock, 500)) })
+    pintarFilas()
+    const n = elegidos.size - antes
+    aviso(`${n} producto${n === 1 ? '' : 's'} más en la impresión`, 'info')
+  })
+  $('#etq-limpiar', el).addEventListener('click', () => { elegidos.clear(); pintarFilas(); aviso('Selección vaciada', 'info') })
+  $('#etq-imprimir', el).addEventListener('click', (e) => conBoton(e.currentTarget, imprimir).catch((err) => aviso(`No se pudo preparar la impresión: ${err.message}`, 'error')))
 
   async function imprimir() {
     const total = [...elegidos.values()].reduce((s, n) => s + n, 0)
@@ -98,5 +114,7 @@ export default function etiquetas(el) {
     window.print()
   }
 
+  const baja = inventario.alCambiar(pintarFilas)
   pintarFilas()
+  return baja
 }

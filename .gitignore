@@ -21,3 +21,5 @@ scraping/logo.jpg
 # y el estado del navegador de playwright-cli, que puede guardar cookies y sesiones.
 .claude/settings.local.json
 .playwright-cli/
+# Foto del catálogo que genera el build (scripts/foto-catalogo.js): no se versiona.
+public/data/vivo.json

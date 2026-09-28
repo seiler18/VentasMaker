@@ -219,3 +219,31 @@
   .pestanas { order: 3; flex-basis: 100%; }
   .barra-usuario { margin-left: auto; }
 }
+
+/* ----- Esperas y respuestas (efectos.css trae lo común) ----- */
+.verificando { justify-items: center; text-align: center; color: var(--texto-tenue); }
+.verificando .rueda { font-size: var(--txt-t2); }
+.linea-esq, .bloque-esq {
+  display: block; height: 12px; border-radius: var(--radio-pildora);
+  background: var(--esqueleto); background-size: 200% 100%;
+  animation: brillo-panel var(--ciclo-brillo) linear infinite;
+}
+.linea-esq + .linea-esq { margin-top: 8px; }
+.linea-esq.corta { width: 45%; }
+.linea-esq.alta { height: 26px; width: 70%; }
+.linea-esq.cuadro { width: 44px; height: 44px; border-radius: var(--radio-sm); }
+.bloque-esq { height: 180px; border-radius: var(--radio-sm); }
+.hoy-esqueleto { display: grid; gap: 10px; padding: 8px 0; }
+.hoy-esqueleto .linea-esq { height: 58px; border-radius: var(--radio-sm); margin: 0; }
+.fila-esqueleto td { padding-block: 14px; }
+@keyframes brillo-panel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.entrada.buscando { border-color: var(--primario-claro); animation: latido-red var(--ciclo-latido) var(--curva-suave) infinite; }
+.foto-previa { position: relative; }
+.foto-previa.subiendo::after {
+  content: ''; position: absolute; inset: 0; margin: auto; width: 36px; height: 36px; border-radius: 50%;
+  border: 3px solid var(--primario-tenue-2); border-top-color: var(--primario);
+  animation: gira var(--giro) linear infinite;
+}
+.foto-previa.subiendo img { opacity: 0.5; }
+.ticket-vacio .rueda { margin-right: 6px; }
+.ticket-linea { transition: background var(--medio) var(--curva-suave); }

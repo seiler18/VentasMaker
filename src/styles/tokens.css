@@ -84,6 +84,18 @@
   --vuelo: 650ms;              /* la foto que vuela al carrito (main.js la lee) */
   --ciclo-latido: 2s;          /* punto verde de "Abierto" */
 
+  /* Confirmaciones y errores (src/lib/efectos.js escucha el fin de estas
+     animaciones, así que la duración vive solo aquí). */
+  --dura-aviso:       4200ms;  /* aviso de éxito */
+  --dura-aviso-error: 8000ms;  /* un error se lee con más calma */
+  --dura-celebra:     2000ms;  /* ✓ grande de "venta registrada" */
+  --dura-hecho:       1200ms;  /* botón en verde tras guardar */
+  --traza:            480ms;   /* dibujar el ✓ o la ✗ */
+  --giro:             700ms;   /* rueda de "trabajando" */
+  --sacudida:         420ms;   /* botón o campo que no pudo */
+  --destello:         1200ms;  /* fila nueva o cambiada */
+  --ciclo-barra:      1.2s;    /* barra de red indeterminada */
+
   /* Efectos del catálogo, derivados de la paleta. */
   --sombra-viva: 0 20px 44px color-mix(in srgb, var(--primario) 26%, transparent),
                  0 0 0 2px color-mix(in srgb, var(--primario-claro) 60%, transparent);
@@ -91,6 +103,9 @@
   --brillo-boton: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.45) 50%, transparent 70%);
   --esqueleto: linear-gradient(90deg, var(--surface-2) 0%, var(--bg-2) 50%, var(--surface-2) 100%);
   --ok-halo: color-mix(in srgb, var(--ok) 45%, transparent);
+  --ok-destello: color-mix(in srgb, var(--ok) 22%, transparent);
+  --velo-celebra: color-mix(in srgb, var(--texto-fuerte) 40%, transparent);
+  --anillo-giro: color-mix(in srgb, currentColor 30%, transparent);
 
   /* ----- Formas y medidas ----- */
   --radio:     14px;
@@ -112,4 +127,5 @@
   --z-barra: 100;
   --z-flotante: 110;
   --z-avisos: 200;
+  --z-red: 210;
 }

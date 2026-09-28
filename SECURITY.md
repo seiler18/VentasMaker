@@ -42,6 +42,10 @@ CSP activa. Segunda revisión, del repositorio entero e historial incluido, el
   costo, código de barras ni el correo de reportes.
 - Imágenes: solo admin, JPEG/PNG/WebP comprobado por firma de bytes, ≤ 1,5 MB, y
   solo URLs propias o de Drive en el catálogo.
+- Escrituras idempotentes (`IDEMPOTENTES`): la clave `idem` va ligada al
+  usuario (`sha256(usuario:idem)`), la respuesta se recuerda 10 min y otro
+  usuario no puede leerla. `cambiarClave` queda fuera: su respuesta trae un
+  token y no debe quedar en caché.
 
 **Front**
 - Plantilla `html\`\`` que escapa todo valor interpolado; la auditoría no
@@ -49,7 +53,17 @@ CSP activa. Segunda revisión, del repositorio entero e historial incluido, el
 - CSP estricta en `<meta>` (sin `unsafe-inline`, sin `eval`, `connect-src` solo a
   Google Apps Script). El verificador rechaza `style=""` en el marcado.
 - Anti-clickjacking por JS (Pages no permite cabeceras); comprobado con un iframe.
-- Panel con `noindex` y `referrer: no-referrer`; `window.open` con `noopener`.
+- Panel con `noindex` y `referrer: no-referrer`. WhatsApp se abre con
+  `window.open` y `opener` cortado a mano (con la opción `noopener` el
+  navegador devuelve siempre `null` y no se podría detectar un bloqueador).
+- El perfil (nombre, rol) y la copia del inventario del panel —con costos, si
+  es admin— viven en `sessionStorage` junto al token: mismo alcance (esa
+  pestaña) y misma exposición que el token, que ya da acceso a todo eso. Se
+  borran al salir o al caducar la sesión. El servidor sigue comprobando sesión
+  y rol en cada acción: el perfil guardado solo decide qué se pinta.
+- `data/vivo.json` (foto del catálogo que publica el deploy) lleva solo campos
+  de vitrina —la misma proyección que el GET público— e imágenes validadas con
+  las reglas del front.
 - Fotos subidas: se re-codifican en canvas, lo que elimina el EXIF (GPS).
 
 **CI**: el trabajo que compila no puede escribir; el que publica solo escribe en

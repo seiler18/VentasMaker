@@ -1,0 +1,181 @@
+/* ============================================================
+   EFECTOS — respuesta visible a cada acción (src/lib/efectos.js).
+   Con prefers-reduced-motion, base.css apaga todas las animaciones: los
+   mensajes siguen apareciendo, solo que sin movimiento.
+   ============================================================ */
+
+/* ----- Avisos ----- */
+#avisos {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  display: grid; gap: 8px; z-index: var(--z-avisos); width: min(100% - 32px, 440px);
+}
+/* `popover` trae márgenes, borde y fondo propios del navegador. */
+#avisos[popover] { inset: auto auto calc(24px + env(safe-area-inset-bottom)) 50%; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible; }
+body.con-carro #avisos { bottom: calc(96px + env(safe-area-inset-bottom)); }
+@media (min-width: 1100px) { body.con-carro #avisos { bottom: calc(24px + env(safe-area-inset-bottom)); } }
+
+.aviso {
+  position: relative; overflow: hidden;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px;
+  padding: 12px 8px 12px 14px; border-radius: var(--radio-sm);
+  background: var(--texto-fuerte); color: var(--surface);
+  font-size: var(--txt-ui); box-shadow: var(--sombra-alta);
+  animation: aviso-entra var(--medio) var(--curva-rebote);
+}
+.aviso.saliendo { animation: aviso-sale var(--medio) var(--curva-suave) forwards; }
+.aviso-icono {
+  display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--ok); color: var(--texto-sobre-primario);
+}
+.aviso-icono .icono { width: 18px; height: 18px; }
+.aviso-ok .aviso-icono .icono path { stroke-dasharray: 22; stroke-dashoffset: 22; animation: traza var(--traza) var(--curva-salida) var(--rapido) forwards; }
+.aviso-error { background: var(--error); color: var(--texto-sobre-primario); animation: aviso-entra var(--medio) var(--curva-rebote), sacude var(--sacudida) var(--curva-suave) var(--medio); }
+.aviso-error .aviso-icono { background: var(--texto-sobre-primario); color: var(--error); }
+.aviso-aviso .aviso-icono { background: var(--aviso); }
+.aviso-info .aviso-icono { background: var(--primario-claro); }
+.aviso-texto { line-height: var(--interlinea-titulo); }
+.aviso-cerrar {
+  display: grid; place-items: center; width: 36px; height: 36px; padding: 0;
+  border: 0; border-radius: 50%; background: transparent; color: inherit; opacity: 0.75; cursor: pointer;
+}
+.aviso-cerrar:hover { opacity: 1; }
+.aviso-cerrar .icono { width: 16px; height: 16px; }
+/* La barra que se consume ES el reloj: al acabar, efectos.js cierra el aviso.
+   Con el puntero encima se pausa, y el aviso espera. */
+.aviso-tiempo {
+  position: absolute; left: 0; bottom: 0; height: 3px; width: 100%;
+  background: currentColor; opacity: 0.35; transform-origin: left;
+  animation: consume var(--dura-aviso) linear forwards;
+}
+.aviso-error .aviso-tiempo { animation-duration: var(--dura-aviso-error); }
+.aviso:hover .aviso-tiempo, .aviso:focus-within .aviso-tiempo { animation-play-state: paused; }
+
+@keyframes aviso-entra { from { opacity: 0; transform: translateY(16px) scale(0.96); } }
+@keyframes aviso-sale { to { opacity: 0; transform: translateY(8px) scale(0.96); } }
+@keyframes consume { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes traza { to { stroke-dashoffset: 0; } }
+@keyframes sacude {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); } 40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); } 80% { transform: translateX(2px); }
+}
+
+/* ----- Confirmación grande ----- */
+dialog.celebra {
+  width: min(100% - 48px, 340px); padding: 28px 24px 24px; text-align: center;
+  display: grid; justify-items: center; gap: 8px; overflow: visible;
+  animation: celebra-entra var(--lento) var(--curva-rebote);
+}
+dialog.celebra::backdrop { background: var(--velo-celebra); }
+.celebra h2 { font-size: var(--txt-t3); }
+.celebra-detalle { margin: 0; color: var(--texto-tenue); }
+.celebra-detalle:empty { display: none; }
+.celebra-marca { position: relative; width: 96px; height: 96px; margin-bottom: 6px; }
+.celebra-marca svg { width: 100%; height: 100%; overflow: visible; }
+.celebra-aro { fill: var(--ok); transform-origin: center; animation: aro var(--lento) var(--curva-rebote); }
+.celebra-error .celebra-aro { fill: var(--error); }
+.celebra-trazo {
+  fill: none; stroke: var(--texto-sobre-primario); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 60; stroke-dashoffset: 60;
+  animation: traza var(--traza) var(--curva-salida) var(--medio) forwards;
+}
+.celebra-error .celebra-marca { animation: sacude var(--sacudida) var(--curva-suave) var(--lento); }
+.celebra-chispas i {
+  position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px; border-radius: 50%;
+  background: var(--dorado); opacity: 0;
+  --angulo: calc(var(--n) * 36deg);
+  animation: chispa var(--lento) var(--curva-salida) var(--medio) forwards;
+}
+.celebra-chispas i:nth-child(3n) { background: var(--acento); }
+.celebra-chispas i:nth-child(3n + 1) { background: var(--primario-claro); }
+.celebra-acciones { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+/* Reloj invisible: su fin cierra la confirmación. */
+.celebra-tiempo { width: 0; height: 0; animation: consume var(--dura-celebra) linear forwards; }
+
+@keyframes celebra-entra { from { opacity: 0; transform: scale(0.85); } }
+@keyframes aro { from { transform: scale(0); } }
+@keyframes chispa {
+  0% { opacity: 1; transform: rotate(var(--angulo)) translateY(0) scale(1); }
+  100% { opacity: 0; transform: rotate(var(--angulo)) translateY(-70px) scale(0.4); }
+}
+
+/* ----- Botones que trabajan ----- */
+.btn-cargando { position: relative; color: transparent !important; pointer-events: none; }
+.btn-cargando > * { visibility: hidden; }
+.btn-cargando::after {
+  content: ''; position: absolute; inset: 0; margin: auto; width: 20px; height: 20px;
+  border-radius: 50%; border: 2.5px solid var(--anillo-giro); border-top-color: var(--texto-fuerte);
+  animation: gira var(--giro) linear infinite;
+}
+.btn-primario.btn-cargando::after, .btn-whatsapp.btn-cargando::after { border-color: var(--anillo-giro); border-top-color: var(--texto-sobre-primario); --anillo-giro: color-mix(in srgb, var(--texto-sobre-primario) 35%, transparent); }
+.btn-cargando:disabled { opacity: 0.85; }
+.btn-hecho { background: var(--ok) !important; color: var(--texto-sobre-primario) !important; border-color: var(--ok) !important; animation: pop-hecho var(--dura-hecho) var(--curva-rebote); }
+.btn-fallo, .sacude { animation: sacude var(--sacudida) var(--curva-suave); }
+.btn-fallo { box-shadow: 0 0 0 3px var(--error-tenue); }
+@keyframes gira { to { transform: rotate(360deg); } }
+@keyframes pop-hecho { 0% { transform: scale(0.94); } 25% { transform: scale(1.04); } 50%, 100% { transform: scale(1); } }
+
+/* ----- Filas que llegan, cambian o se van ----- */
+.destella, .destella > td { animation: destella var(--destello) var(--curva-suave); }
+@keyframes destella { 0%, 30% { background-color: var(--ok-destello); } 100% { background-color: transparent; } }
+.se-va { animation: se-va var(--medio) var(--curva-suave) forwards; pointer-events: none; }
+@keyframes se-va { to { opacity: 0; transform: translateX(24px); } }
+
+/* ----- Pantalla de error ----- */
+.panel-error {
+  display: grid; justify-items: center; gap: 10px; text-align: center;
+  padding: 48px 20px; max-width: 520px; margin: 24px auto;
+  background: var(--surface); border: 1px solid var(--borde); border-radius: var(--radio);
+  animation: entra var(--medio) var(--curva-salida);
+}
+.panel-error.compacto { padding: 20px 16px; margin: 0; border-style: dashed; }
+.pe-icono {
+  display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%;
+  background: var(--error-tenue); color: var(--error);
+  animation: sacude var(--sacudida) var(--curva-suave) var(--medio);
+}
+.compacto .pe-icono { width: 44px; height: 44px; }
+.pe-icono .icono { width: 30px; height: 30px; }
+.compacto .pe-icono .icono { width: 22px; height: 22px; }
+.pe-titulo { font-size: var(--txt-t3); }
+.compacto .pe-titulo { font-size: var(--txt-cuerpo); }
+.pe-detalle { margin: 0; color: var(--texto); }
+.pe-ayuda { margin: 0; color: var(--texto-tenue); font-size: var(--txt-menudo); }
+
+/* ----- Estado de red ----- */
+.red-barra {
+  position: fixed; left: 0; right: 0; top: 0; height: 3px; z-index: var(--z-red); overflow: hidden;
+  background: var(--primario-tenue-2); pointer-events: none;
+}
+.red-barra[hidden] { display: none; }
+.red-barra::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -40%;
+  background: var(--degradado); border-radius: var(--radio-pildora);
+  animation: barra-red var(--ciclo-barra) var(--curva-suave) infinite;
+}
+@keyframes barra-red { to { left: 100%; } }
+
+.red-pildora {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: var(--z-red);
+  display: flex; align-items: center; gap: 8px; max-width: min(100% - 32px, 460px);
+  padding: 8px 16px; border-radius: var(--radio-pildora);
+  background: var(--surface); color: var(--texto-fuerte); box-shadow: var(--sombra);
+  border: 1px solid var(--borde); font-size: var(--txt-menudo); font-weight: 600;
+  animation: pildora-entra var(--medio) var(--curva-rebote);
+}
+.red-pildora[popover] { inset: 12px auto auto 50%; margin: 0; }
+.red-pildora[hidden] { display: none; }
+.red-pildora .icono { width: 18px; height: 18px; color: var(--primario); }
+.red-pildora[data-tipo="aviso"] .icono { color: var(--aviso); }
+.red-pildora[data-tipo="ok"] .icono { color: var(--ok); }
+.red-pildora[data-tipo="info"] .icono { animation: latido-red var(--ciclo-latido) var(--curva-suave) infinite; }
+@keyframes pildora-entra { from { opacity: 0; transform: translate(-50%, -12px); } }
+@keyframes latido-red { 50% { opacity: 0.35; } }
+
+/* ----- Esperas: rueda y siluetas ----- */
+.rueda {
+  display: inline-block; width: 1em; height: 1em; vertical-align: -0.15em;
+  border-radius: 50%; border: 2px solid var(--primario-tenue-2); border-top-color: var(--primario);
+  animation: gira var(--giro) linear infinite;
+}
+.salta { animation: pop-hecho var(--dura-hecho) var(--curva-rebote); display: inline-block; }

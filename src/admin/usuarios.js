@@ -3,7 +3,8 @@
    admin: todo. vendedor: vender y ver sus ventas del día; no ve costos, no
    ajusta stock, no anula ventas, no aplica descuentos. Estas reglas las
    impone el backend (PERMISOS en Code.gs); aquí solo se administran. */
-import { html, crudo, pintar, $, aviso } from '../lib/dom.js'
+import { html, crudo, pintar, $ } from '../lib/dom.js'
+import { aviso, conBoton, destellar, panelError, sacudir } from '../lib/efectos.js'
 import { fechaHora } from '../lib/formato.js'
 import { icono } from '../lib/iconos.js'
 import { llamar, sesion } from './estado.js'
@@ -14,13 +15,15 @@ export default function usuarios(el) {
       <div class="inv-barra"><h2>Usuarios</h2><button class="btn btn-primario" type="button" id="usr-nuevo">${icono.mas} Nuevo usuario</button></div>
       <div class="tabla-envoltura"><table class="tabla">
         <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último ingreso</th><th></th></tr></thead>
-        <tbody id="usr-filas"><tr><td colspan="6" class="vacio">Cargando…</td></tr></tbody>
+        <tbody id="usr-filas">${Array.from({ length: 3 }, () => html`<tr class="fila-esqueleto"><td><span class="linea-esq corta"></span></td><td><span class="linea-esq"></span></td><td><span class="linea-esq corta"></span></td><td></td><td></td><td></td></tr>`)}</tbody>
       </table></div>
+      <div id="usr-error"></div>
     </section>
     <dialog id="dlg-usr" aria-labelledby="dlg-usr-t"></dialog>`)
 
   let lista = []
-  async function cargar() {
+  async function cargar(destacar) {
+    $('#usr-error', el).innerHTML = ''
     try {
       lista = (await llamar('usuarios')).usuarios
       pintar($('#usr-filas', el), lista.map((u) => html`
@@ -30,7 +33,12 @@ export default function usuarios(el) {
           <td>${u.ultimo_login ? fechaHora(u.ultimo_login) : '—'}</td>
           <td class="acciones"><button class="btn btn-borde btn-chico" type="button" data-editar>${icono.editar} Editar</button></td>
         </tr>`))
-    } catch (err) { aviso(err.message, 'error') }
+      if (destacar) destellar($(`tr[data-u="${CSS.escape(destacar)}"]`, el))
+    } catch (err) {
+      if (!el.isConnected) return
+      pintar($('#usr-filas', el), '')
+      panelError($('#usr-error', el), { titulo: 'No se pudo cargar la lista de usuarios', detalle: err.message, reintentar: () => cargar() })
+    }
   }
 
   function ficha(u) {
@@ -65,13 +73,17 @@ export default function usuarios(el) {
         rol: propio ? u.rol : fd.get('rol'), activo: propio ? true : fd.get('activo') === 'on', clave: fd.get('clave') || undefined,
       }
       const err = $('#err-usr', d)
-      if (!/^[a-z0-9._-]{3,32}$/.test(datos.usuario)) return (err.textContent = 'Usuario: 3 a 32 letras minúsculas, números, punto o guion.')
+      const mal = (msg, campo) => { err.textContent = msg; sacudir($(`[name=${campo}]`, d)) }
+      if (!/^[a-z0-9._-]{3,32}$/.test(datos.usuario)) return mal('Usuario: 3 a 32 letras minúsculas, números, punto o guion.', 'usuario')
       if ((nuevo || datos.clave) && (String(datos.clave || '').length < 10 || !/[a-zA-Z]/.test(datos.clave) || !/\d/.test(datos.clave))) {
-        return (err.textContent = 'La clave debe tener al menos 10 caracteres, con letras y números.')
+        return mal('La clave debe tener al menos 10 caracteres, con letras y números.', 'clave')
       }
+      err.textContent = ''
       try {
-        await llamar('guardarUsuario', { usuario: datos })
-        d.close(); aviso('Usuario guardado'); cargar()
+        await conBoton($('[type=submit][form=form-usr]', d), () => llamar('guardarUsuario', { usuario: datos }))
+        d.close()
+        aviso(nuevo ? `Usuario ${datos.usuario} creado` : `Usuario ${datos.usuario} guardado`)
+        cargar(datos.usuario)
       } catch (x) { err.textContent = x.message }
     })
   }

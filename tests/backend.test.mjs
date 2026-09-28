@@ -78,7 +78,7 @@ const G = {
   UrlFetchApp: {}, MailApp: { sendEmail: (...a) => logs.push('MAIL ' + a[0]) }, DriveApp: {}, ScriptApp: {},
 }
 const ctx = vm.createContext(G)
-vm.runInContext(src + '\n;globalThis.__T = { doGet, doPost, instalar, generarReportes, restablecerAdmin, HOJAS, agregar_ };', ctx)
+vm.runInContext(src + '\n;globalThis.__T = { doGet, doPost, onEdit, instalar, generarReportes, restablecerAdmin, HOJAS, agregar_ };', ctx)
 const T = ctx.__T
 const post = (o) => T.doPost({ postData: { contents: JSON.stringify(o) } })
 
@@ -163,6 +163,51 @@ r = post({ accion: 'ajustarStock', token: tok, id: 'p2', delta: 5, tipo: 'ingres
 esperar('ingreso suma', r.ok && r.stock === 6)
 esperar('nota con fórmula neutralizada', typeof hojas.Movimientos.d.at(-1)[7] === 'object')
 esperar('stock negativo rechazado', !post({ accion: 'ajustarStock', token: tok, id: 'p2', nuevo: -1 }).ok)
+
+// ajuste en lote (ingreso de mercadería en una sola llamada)
+const stockDe = (id) => post({ accion: 'productos', token: tok }).productos.find((p) => p.id === id).stock
+const antesP1 = stockDe('p1'), antesP2 = stockDe('p2'), movsAntes = hojas.Movimientos.d.length
+r = post({ accion: 'ajustarStock', token: tok, tipo: 'ingreso', nota: 'factura 12', items: [{ id: 'p1', delta: 2 }, { id: 'p2', delta: 3 }] })
+esperar('lote suma a cada producto', r.ok && r.stock.find((s) => s.id === 'p1').stock === antesP1 + 2 && r.stock.find((s) => s.id === 'p2').stock === antesP2 + 3, JSON.stringify(r))
+esperar('lote deja un movimiento por producto', hojas.Movimientos.d.length === movsAntes + 2)
+r = post({ accion: 'ajustarStock', token: tok, tipo: 'merma', items: [{ id: 'p1', delta: 1 }, { id: 'p2', delta: -999 }] })
+esperar('lote con una línea inválida no escribe ninguna', !r.ok && stockDe('p1') === antesP1 + 2)
+esperar('lote con producto repetido rechazado', !post({ accion: 'ajustarStock', token: tok, items: [{ id: 'p1', delta: 1 }, { id: 'p1', delta: 1 }] }).ok)
+esperar('lote con id heredado rechazado', !post({ accion: 'ajustarStock', token: tok, items: [{ id: '__proto__', delta: 1 }] }).ok)
+esperar('lote vacío rechazado', !post({ accion: 'ajustarStock', token: tok, items: [] }).ok)
+
+// versión del contrato e idempotencia
+esperar('toda respuesta anuncia la versión', post({ accion: 'sesion', token: tok }).srv === 2 && T.doGet({ parameter: {} }).srv === 2)
+const kIdem = (u, k) => 'idem_' + crypto.createHash('sha256').update(`${u}:${k}`).digest('base64').replace(/\+/g, '-').replace(/\//g, '_')
+const idem = 'prueba-idem-0123456789'
+const stockIdem = stockDe('p1')
+const v1 = post({ accion: 'vender', token: tok, idem, items: [{ id: 'p1', cantidad: 1 }] })
+const v2 = post({ accion: 'vender', token: tok, idem, items: [{ id: 'p1', cantidad: 1 }] })
+esperar('reintento con la misma clave no vende dos veces', v1.ok && v2.ok && v2.ventaId === v1.ventaId && v2.repetida && stockDe('p1') === stockIdem - 1, JSON.stringify([v1, v2]))
+esperar('la respuesta queda en caché bajo la clave del usuario', cache.has(kIdem('admin', idem)))
+esperar('otra clave sí es otra venta', post({ accion: 'vender', token: tok, idem: 'otra-clave-0123456789', items: [{ id: 'p1', cantidad: 1 }] }).ventaId !== v1.ventaId)
+const idemFallo = 'fallo-idem-0123456789'
+esperar('venta fallida no queda recordada', !post({ accion: 'vender', token: tok, idem: idemFallo, items: [{ id: 'p1', cantidad: 9999 }] }).ok &&
+  !cache.has(kIdem('admin', idemFallo)))
+cache.set(kIdem('admin', 'en-curso-0123456789'), 'en_curso')
+r = post({ accion: 'vender', token: tok, idem: 'en-curso-0123456789', items: [{ id: 'p1', cantidad: 1 }] })
+esperar('reintento mientras la primera sigue en marcha no ejecuta', !r.ok && r.enCurso === true && stockDe('p1') === stockIdem - 2)
+esperar('clave de otro usuario no ve la respuesta ajena', (() => {
+  const k = 'ajena-idem-0123456789'
+  cache.set(kIdem('otro', k), JSON.stringify({ ok: true, secreto: 1 }))
+  const x = post({ accion: 'ajustarStock', token: tok, idem: k, id: 'p2', delta: 0 })
+  return x.ok && !('secreto' in x) && !x.repetida
+})())
+esperar('idem mal formado se ignora (ejecuta normal)', post({ accion: 'ajustarStock', token: tok, idem: 'x', id: 'p2', delta: 0 }).ok)
+
+// caché del catálogo
+T.doGet({ parameter: {} })
+esperar('catálogo queda en caché', cache.has('cat_n'))
+T.onEdit({ range: { getSheet: () => ({ getName: () => 'Registro' }) } })
+esperar('editar otra hoja no invalida el catálogo', cache.has('cat_n'))
+T.onEdit({ range: { getSheet: () => ({ getName: () => 'Productos' }) } })
+esperar('editar Productos a mano invalida el catálogo', !cache.has('cat_n'))
+esperar('onEdit sin evento no revienta', (() => { try { T.onEdit(); return true } catch { return false } })())
 
 // productos
 r = post({ accion: 'guardarProducto', token: tok, producto: { nombre: 'Nuevo', precio: 500, stock: 3, imagen: 'javascript:alert(1)' } })

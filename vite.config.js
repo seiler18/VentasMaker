@@ -44,6 +44,8 @@ export default defineConfig({
       input: {
         tienda: resolve(import.meta.dirname, 'index.html'),
         admin: resolve(import.meta.dirname, 'admin.html'),
+        // GitHub Pages la sirve para cualquier ruta que no existe.
+        e404: resolve(import.meta.dirname, '404.html'),
       },
     },
   },

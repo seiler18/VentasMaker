@@ -4,7 +4,8 @@
    cuentan). Además, el disparador diario del backend deja las mismas cifras
    escritas en las hojas "Resumen …" de la planilla, para quien prefiera
    mirarlas ahí o hacer sus propios gráficos. */
-import { html, pintar, $, aviso } from '../lib/dom.js'
+import { html, pintar, $ } from '../lib/dom.js'
+import { aviso, panelError } from '../lib/efectos.js'
 import { clp, num, hoyISO } from '../lib/formato.js'
 import { llamar } from './estado.js'
 import { descargarCSV } from './csv.js'
@@ -30,18 +31,27 @@ export default function reportes(el) {
         <label class="campo"><span>Hasta</span><input class="entrada" type="date" id="rep-hasta" value="${st.hasta}"></label>
         <button class="btn btn-borde" type="button" id="rep-csv">Exportar CSV</button>
       </div>
-      <div id="rep-cuerpo"><p class="vacio">Cargando…</p></div>
+      <div id="rep-cuerpo">${esqueleto()}</div>
     </section>`)
 
+  /* Cambiar de periodo dos veces seguidas lanza dos peticiones que pueden
+     volver en cualquier orden (Apps Script tarda lo que quiere): solo se
+     pinta la última que se pidió. */
+  let turno = 0
   async function cargar() {
     const cuerpo = $('#rep-cuerpo', el)
+    const mio = ++turno
     cuerpo.classList.add('cargando')
     try {
-      st.datos = await llamar('reporte', { periodo: st.periodo, desde: st.desde, hasta: st.hasta })
+      const datos = await llamar('reporte', { periodo: st.periodo, desde: st.desde, hasta: st.hasta })
+      if (mio !== turno) return
+      st.datos = datos
       pintarReporte()
     } catch (err) {
-      pintar(cuerpo, html`<p class="vacio">${err.message}</p>`)
-    } finally { cuerpo.classList.remove('cargando') }
+      if (mio !== turno || !cuerpo.isConnected) return
+      st.datos = null
+      panelError(cuerpo, { titulo: 'No se pudo cargar el reporte', detalle: err.message, reintentar: cargar })
+    } finally { if (mio === turno) cuerpo.classList.remove('cargando') }
   }
 
   function pintarReporte() {
@@ -103,6 +113,7 @@ export default function reportes(el) {
     if (e.target.closest('#rep-csv')) {
       if (!st.datos?.serie.length) return aviso('No hay datos para exportar', 'error')
       descargarCSV(`ventas-${st.periodo}`, st.datos.serie, ['periodo', 'total', 'transacciones', 'unidades'])
+      aviso(`CSV descargado · ${st.datos.serie.length} filas`)
     }
   })
   el.addEventListener('change', (e) => {
@@ -111,6 +122,11 @@ export default function reportes(el) {
   })
 
   cargar()
+}
+
+function esqueleto() {
+  return html`<div class="kpis">${Array.from({ length: 4 }, () => html`<div class="kpi"><span class="linea-esq corta"></span><span class="linea-esq alta"></span></div>`)}</div>
+    <div class="panel-bloque"><span class="linea-esq corta"></span><span class="bloque-esq"></span></div>`
 }
 
 /* Barras de una sola serie en SVG propio.

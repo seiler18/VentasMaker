@@ -13,6 +13,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Cada 2 horas se republica para refrescar la foto del catálogo
+  # (data/vivo.json, ver scripts/foto-catalogo.js) con precios y stock de la
+  # hoja. GitHub pausa los programados tras 60 días sin actividad en el repo:
+  # si pasa, se reactivan desde la pestaña Actions.
+  schedule:
+    - cron: '17 */2 * * *'
 
 concurrency:
   group: pages

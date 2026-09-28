@@ -1,9 +1,11 @@
 import '../styles/tokens.css'
 import '../styles/base.css'
 import '../styles/tienda.css'
+import '../styles/efectos.css'
 
 import { protegerMarco } from '../lib/marco.js'
-import { html, crudo, pintar, $, $$, aviso } from '../lib/dom.js'
+import { html, crudo, pintar, $, $$ } from '../lib/dom.js'
+import { aviso, celebrar, desvanecer, panelError, sacudir } from '../lib/efectos.js'
 import { clp, normalizar } from '../lib/formato.js'
 import { icono } from '../lib/iconos.js'
 import { urlImagen } from '../lib/imagen.js'
@@ -31,6 +33,8 @@ const estadoUI = {
   orden: 'alfa',
   vista: leerPref('vm_vista', 'rejilla'),
   mostrados: TANDA,
+  fuente: '',         // '' | 'copia' | 'estatica' | 'vivo': de dónde salió lo pintado
+  firma: '',          // para no repintar si lo que llega es igual a lo que hay
 }
 
 function leerPref(k, def) { try { return localStorage.getItem(k) || def } catch { return def } }
@@ -56,26 +60,121 @@ function pintarEsqueleto() {
     </div>`)
 }
 
-async function cargar() {
-  pintarEsqueleto()
-  let datos
+/* PINTAR YA, ACTUALIZAR DESPUÉS. Apps Script puede tardar un minuto en
+   contestar (se ha medido), así que el catálogo nunca lo espera:
+   1. la última copia que vio ESTE navegador (localStorage), al instante;
+   2. si no hay, o es más vieja, la foto del catálogo publicada con el sitio
+      (data/vivo.json, la genera el deploy desde la hoja; si no existe,
+      la semilla data/catalogo.json);
+   3. y por detrás, el inventario en vivo, que reemplaza sin saltos lo pintado.
+   Si falla lo vivo no se molesta al cliente: ya está viendo el catálogo. */
+const CLAVE_COPIA = 'vm_catalogo'
+const RANGO = { '': 0, estatica: 1, copia: 1, vivo: 2 }
+
+function leerCopia() {
+  try {
+    const c = JSON.parse(localStorage.getItem(CLAVE_COPIA) || 'null')
+    return c && Array.isArray(c.datos?.productos) && c.datos.productos.length ? c : null
+  } catch { return null }
+}
+function guardarCopia(datos) {
+  try { localStorage.setItem(CLAVE_COPIA, JSON.stringify({ t: Date.now(), datos: { tienda: datos.tienda, productos: datos.productos } })) } catch { /* lleno */ }
+}
+
+async function cargarEstatica() {
   if (hayBackend()) {
-    try { datos = await catalogo() } catch {
-      aviso('No se pudo conectar con el inventario en vivo; se muestra la última copia publicada.', 'error')
-    }
+    try {
+      const r = await fetch(`${BASE}data/vivo.json`, { cache: 'no-cache' })
+      if (r.ok) {
+        const j = await r.json()
+        if (Array.isArray(j.productos) && j.productos.length) return { t: j.generado || 0, datos: j }
+      }
+    } catch { /* se usa la semilla */ }
   }
-  if (!datos) {
-    const r = await fetch(`${BASE}data/catalogo.json`)
-    datos = { tienda: {}, productos: await r.json() }
-  }
-  Object.assign(estadoUI.tienda, datos.tienda || {})
-  const mostrarAgotados = estadoUI.tienda.mostrar_agotados !== 'no'
-  estadoUI.productos = (datos.productos || [])
+  const r = await fetch(`${BASE}data/catalogo.json`)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return { t: 0, datos: { tienda: {}, productos: await r.json() } }
+}
+
+function aplicar(datos, fuente) {
+  if (RANGO[fuente] < RANGO[estadoUI.fuente]) return
+  const tienda = { ...TIENDA, ...(datos.tienda || {}) }
+  const mostrarAgotados = tienda.mostrar_agotados !== 'no'
+  const productos = (datos.productos || [])
     .filter((p) => p.visible !== false && (mostrarAgotados || p.stock > 0))
     .map((p, i) => ({ ...p, precio: Number(p.precio) || 0, stock: Number(p.stock) || 0,
                       _n: normalizar(`${p.nombre} ${p.descripcion} ${p.categoria}`), _i: i }))
-  estadoUI.porId = new Map(estadoUI.productos.map((p) => [p.id, p]))
-  pintarTodo()
+  const firma = JSON.stringify([tienda, productos.map((p) => [p.id, p.nombre, p.precio, p.stock, p.imagen, p.categoria, p.descripcion])])
+  const primera = !estadoUI.fuente
+  estadoUI.fuente = fuente
+  if (firma === estadoUI.firma) return
+  estadoUI.firma = firma
+  const cabeceraAntes = primera ? '' : firmaCabecera()
+  estadoUI.tienda = tienda
+  estadoUI.productos = productos
+  estadoUI.porId = new Map(productos.map((p) => [p.id, p]))
+  if (primera) return pintarTodo()
+
+  // Ya había catálogo en pantalla: se actualiza sin que se note. Si cambió
+  // la cabecera (datos de la tienda o categorías) y nadie está escribiendo
+  // ni mirando un detalle, se repinta todo conservando la posición.
+  entradaAnimada = false
+  const ocupado = document.querySelector('dialog[open]') || document.activeElement?.id === 'q'
+  if (firmaCabecera() !== cabeceraAntes && !ocupado) {
+    const y = window.scrollY
+    pintarTodo()
+    window.scrollTo(0, y)
+  } else {
+    pintarProductos()
+    pintarResumenCarrito()
+  }
+  entradaAnimada = true
+}
+
+function firmaCabecera() {
+  const t = estadoUI.tienda
+  const cuenta = {}
+  estadoUI.productos.forEach((p) => { cuenta[p.categoria] = (cuenta[p.categoria] || 0) + 1 })
+  return JSON.stringify([t.tienda_nombre, t.tienda_direccion, t.tienda_ciudad, t.horario, t.tienda_logo, t.tienda_telefono, cuenta])
+}
+
+async function cargar() {
+  const copia = leerCopia()
+  if (copia) aplicar(copia.datos, 'copia')
+  else pintarEsqueleto()
+
+  // La foto publicada es CDN (rápida): si no había copia, o es más nueva
+  // que la copia, se pinta mientras llega lo vivo.
+  const estatica = cargarEstatica()
+    .then((e) => { if (!copia || e.t > copia.t) aplicar(e.datos, 'estatica') })
+    .catch((err) => console.warn('Catálogo publicado no disponible:', err))
+
+  if (hayBackend()) {
+    try {
+      const vivo = await catalogo()
+      guardarCopia(vivo)
+      aplicar(vivo, 'vivo')
+    } catch (err) {
+      console.warn('Inventario en vivo no disponible; se muestra la última copia.', err)
+    }
+  }
+  await estatica
+  if (!estadoUI.fuente) throw new Error('Sin catálogo')
+}
+
+function pantallaSinCatalogo() {
+  const t = estadoUI.tienda
+  pintar($('#app'), html`
+    <main class="sin-catalogo">
+      <img class="logo" src="${BASE}img/logo.webp" alt="" width="96" height="96">
+      <div id="error-catalogo"></div>
+      <a class="btn btn-whatsapp" href="https://wa.me/${soloDigitos(t.tienda_telefono)}" rel="noopener noreferrer" target="_blank">${icono.whatsapp} Pedir por WhatsApp mientras tanto</a>
+    </main>`)
+  panelError($('#error-catalogo'), {
+    titulo: 'No pudimos cargar el catálogo',
+    detalle: navigator.onLine === false ? 'Parece que no tienes conexión a internet.' : 'El servidor no respondió.',
+    reintentar: () => iniciar(),
+  })
 }
 
 /* ============================================================
@@ -231,7 +330,9 @@ function controlCantidad(p, n) {
 }
 
 /* Entrada escalonada: cada tarjeta aparece al acercarse a la pantalla, con un
-   pequeño retardo respecto de la anterior de su misma tanda. */
+   pequeño retardo respecto de la anterior de su misma tanda. Al actualizar
+   con el inventario en vivo NO se anima: las tarjetas ya estaban ahí. */
+let entradaAnimada = true
 const revelador = new IntersectionObserver((entradas) => {
   let i = 0
   for (const e of entradas) {
@@ -244,7 +345,7 @@ const revelador = new IntersectionObserver((entradas) => {
 
 function observar(ul) {
   $$('.producto:not(.visible)', ul).forEach((li) => {
-    if (SIN_MOVIMIENTO.matches) li.classList.add('visible')
+    if (SIN_MOVIMIENTO.matches || !entradaAnimada) li.classList.add('visible')
     else revelador.observe(li)
   })
 }
@@ -492,7 +593,22 @@ function enviarPedido(e) {
     datos.nota?.trim() ? `Comentario: ${datos.nota.trim()}` : '',
   ].filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n')
 
-  window.open(`https://wa.me/${soloDigitos(t.tienda_telefono)}?text=${encodeURIComponent(texto)}`, '_blank', 'noopener')
+  const url = `https://wa.me/${soloDigitos(t.tienda_telefono)}?text=${encodeURIComponent(texto)}`
+  // Sin 'noopener' en las opciones: con él, window.open devuelve SIEMPRE null
+  // y no se podría distinguir una ventana bloqueada. Se corta el opener a mano.
+  // Si el navegador la bloqueó (null de verdad), se va en esta pestaña.
+  const w = window.open(url, '_blank')
+  if (w) w.opener = null
+  $('#dlg-carrito').close()
+  celebrar({
+    titulo: '¡Tu pedido está listo!',
+    detalle: 'Se abrió WhatsApp con el detalle. Solo falta tocar Enviar; te responderemos por ahí.',
+    acciones: [
+      { texto: 'Seguir mirando', primaria: true },
+      { texto: 'Vaciar el carrito', fn: () => { carrito.vaciar(); $$('.producto').forEach((li) => refrescarControles(li.dataset.id)); pintarResumenCarrito(); aviso('Carrito vaciado', 'info') } },
+    ],
+  })
+  if (!w) location.href = url
 }
 
 function abrirHorario() {
@@ -561,10 +677,13 @@ document.addEventListener('click', (e) => {
   if (accion === 'checkout') return abrirCarrito()
   if (accion === 'vaciar') {
     if (!confirm('¿Vaciar el carrito?')) return
-    carrito.vaciar()
-    if ($('#dlg-carrito').open) pintarCarrito()
-    $$('.producto').forEach((li) => refrescarControles(li.dataset.id))
-    pintarResumenCarrito()
+    desvanecer($('#panel-carrito .pc-lineas')).then(() => {
+      carrito.vaciar()
+      if ($('#dlg-carrito').open) pintarCarrito()
+      $$('.producto').forEach((li) => refrescarControles(li.dataset.id))
+      pintarResumenCarrito()
+      aviso('Carrito vaciado', 'info')
+    })
     return
   }
 
@@ -575,17 +694,34 @@ document.addEventListener('click', (e) => {
   if (accion === 'mas' || accion === 'menos') {
     const antes = carrito.cantidad(id)
     const n = antes + (accion === 'mas' ? 1 : -1)
-    if (accion === 'mas' && n > p.stock) return aviso(`Solo quedan ${p.stock} unidades`, 'error')
-    carrito.poner(id, n, p.stock)
-    refrescarControles(id)
-    pintarResumenCarrito(accion === 'mas' ? id : null)
-    if ($('#dlg-carrito').open) pintarCarrito()
+    if (accion === 'mas' && n > p.stock) { sacudir(b); return aviso(`Solo quedan ${p.stock} unidades de ${p.nombre}`, 'error') }
+    const actualizar = () => {
+      carrito.poner(id, n, p.stock)
+      refrescarControles(id)
+      pintarResumenCarrito(accion === 'mas' ? id : null)
+      if ($('#dlg-carrito').open) pintarCarrito()
+    }
+    if (n <= 0) {
+      // Sale del pedido: la línea se desvanece antes de irse.
+      Promise.all($$(`.lineas .linea[data-id="${CSS.escape(id)}"]`).map(desvanecer)).then(() => {
+        actualizar()
+        aviso(`Quitaste ${p.nombre} del pedido`, 'info')
+      })
+      return
+    }
+    actualizar()
+    if (antes === 0) aviso(`${p.nombre} agregado a tu pedido`)
     // Vuela solo al agregar desde el catálogo o el detalle, no desde el carrito.
     if (accion === 'mas' && !b.closest('.lineas')) volarAlCarrito(b.closest('.producto, .detalle'))
   }
 })
 
-cargar().catch((err) => {
-  console.error(err)
-  pintar($('#app'), html`<p class="vacio">No se pudo cargar el catálogo. Revisa tu conexión y recarga la página.</p>`)
-})
+function iniciar() {
+  return cargar().catch((err) => {
+    console.error(err)
+    pantallaSinCatalogo()
+  })
+}
+
+window.addEventListener('offline', () => aviso('Sin conexión a internet: puedes mirar el catálogo, pero para enviar el pedido necesitas conexión.', 'error'))
+iniciar()

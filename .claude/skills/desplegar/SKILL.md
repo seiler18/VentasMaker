@@ -81,4 +81,4 @@ curl -s -o /dev/null -w "js:       %{http_code}\n" "$URL$JS"
 | Actions rojo en `check` | Ver arriba | Arreglar en local, no desactivar la regla |
 | En producción no carga nada y en dev sí | CSP bloqueando algo nuevo | Consola del navegador; añadir el dominio al `CSP` |
 | El panel dice «modo demo» en producción | `API_URL` vacía en `src/config.js` | Poner la URL `/exec` |
-| El catálogo muestra datos viejos | Caché del catálogo (5 min) o del navegador | Esperar / Ctrl+Shift+R |
+| El catálogo muestra datos viejos | Pinta primero la copia local o `data/vivo.json` y actualiza con lo vivo en segundos; si no, Apps Script no contesta (skill `desplegar-backend`) | Esperar unos segundos / Ctrl+Shift+R |

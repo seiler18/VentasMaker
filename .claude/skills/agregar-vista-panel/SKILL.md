@@ -42,10 +42,27 @@ aunque el vendedor no vea la pestaña.
    (`el.style.setProperty('--x', v)`).
 5. Colores, tamaños y duraciones solo como tokens de `src/styles/tokens.css`;
    estilos del panel en `src/styles/admin.css`.
-6. Llamadas al servidor con `llamar('accion', datos)` de `src/lib/api.js`;
-   errores al usuario con `aviso(msg, 'error')`. Si la acción no existe, skill
+6. Llamadas al servidor con `llamar('accion', datos)` de `./estado.js` (elige
+   el backend real o el demo). Si la acción no existe, skill
    `agregar-accion-backend`.
-7. `window.open` siempre con `'noopener'`.
+7. **Cada acción responde a la vista** (`src/lib/efectos.js`, no `dom.js`):
+   - el botón que llama al servidor, dentro de `conBoton(btn, () => llamar(…))`:
+     se desactiva, gira, y termina en ✓ verde o sacudida;
+   - al terminar, `aviso(msg)` / `aviso(msg, 'error')`; lo importante (una
+     venta, un ingreso) con `celebrar({ titulo, detalle })`;
+   - fila nueva o cambiada → `destellar(tr)`; la que se va → `await desvanecer(el)`;
+   - lo que carga al abrir la vista: silueta (`.linea-esq`) mientras llega y,
+     si falla, `panelError(caja, { titulo, detalle: err.message, reintentar })`.
+     Nunca un «Cargando…» que se queda para siempre.
+   - `err.incierto` (escritura sin respuesta del servidor): decir que no se
+     sabe si se guardó y ofrecer revisar, **no** repetirla a ciegas.
+8. **No esperes a Apps Script para pintar** (puede tardar un minuto). Los
+   productos salen de `inventario` (`estado.js`), que ya está en memoria; si la
+   vista los usa, suscríbete con `const baja = inventario.alCambiar(repintar)`
+   y devuelve `baja` en la limpieza. Tras guardar, `inventario.aplicar(id,
+   cambios)` en vez de recargar la hoja entera.
+9. Para abrir WhatsApp u otra pestaña: `window.open(url, '_blank')` y después
+   `w.opener = null` (con la opción `'noopener'` devuelve siempre `null`).
 
 ## Probar
 

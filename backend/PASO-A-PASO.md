@@ -179,7 +179,8 @@ Cuando el programador te confirme que conectó el enlace:
 | Perdí la clave del admin | En Apps Script elige **`restablecerAdmin`** → Ejecutar. El registro muestra una clave nueva (el panel pedirá cambiarla). Las sesiones abiertas del admin se cierran. |
 | `importarSemilla` dice *"Productos ya tiene datos"* | Ya estaba cargado; no hace falta repetirlo. Es a propósito, para no borrar datos reales. |
 | Error *"Falta la hoja …"* o *"Falta ejecutar instalar()"* | Ejecuta **`instalar`** otra vez: no borra nada, solo completa lo que falte. |
-| El catálogo no muestra un cambio hecho a mano en la hoja | El catálogo se actualiza cada 5 minutos. Los cambios hechos desde el panel se ven al instante. |
+| El catálogo no muestra un cambio hecho a mano en la hoja | Recarga la página: los cambios en *Productos* o *Config* se ven al instante. Si editaste de otra forma (pegando desde otra planilla con un programa), haz cualquier cambio desde el panel o espera unas horas. |
+| El sitio o el panel tardan mucho, o dicen «Google está tardando» | Es Google: a veces Apps Script tarda en responder. El catálogo se sigue viendo y el panel reintenta solo. Si pasa todo el día, mira en Apps Script **Ejecuciones** (ícono ☰ a la izquierda) cuánto duran y si hay errores, y avisa al programador. |
 | El panel dice *"Sesión caducada"* | Las sesiones duran 6 horas. Vuelve a entrar. |
 | *"Demasiados intentos"* al entrar | Espera 15 minutos (protección contra quien intente adivinar claves). |
 | Al ejecutar sale *"Se requiere autorización"* | Repite la parte de permisos del paso 6. |

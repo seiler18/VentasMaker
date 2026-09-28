@@ -1,0 +1,20 @@
+/* Página 404 (404.html). Solo CSS: debe verse aunque no cargue ningún script. */
+@import './tokens.css';
+@import './base.css';
+
+.e404 {
+  min-height: 100dvh; display: grid; place-content: center; justify-items: center; gap: 14px;
+  padding: 32px 16px; text-align: center; background: var(--degradado); color: var(--texto-sobre-primario);
+}
+.e404 img { border-radius: 50%; border: 4px solid var(--surface); box-shadow: var(--sombra-alta); animation: e404-flota var(--ciclo-latido) var(--curva-suave) infinite alternate; }
+.e404-codigo {
+  margin: 0; font-family: var(--fuente-titulos); font-weight: 700; line-height: 1;
+  font-size: clamp(4rem, 3rem + 8vw, 7rem); letter-spacing: var(--tracking-etiqueta);
+  opacity: 0.35; animation: entra var(--lento) var(--curva-salida);
+}
+.e404 h1 { color: var(--texto-sobre-primario); font-size: var(--txt-t2); animation: entra var(--lento) var(--curva-salida) var(--rapido) both; }
+.e404 p { margin: 0; max-width: 42ch; }
+.e404-acciones { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 8px; animation: entra var(--lento) var(--curva-salida) var(--medio) both; }
+.e404 .btn-primario { background: var(--surface); color: var(--primario); }
+.e404 .btn-borde { color: var(--texto-sobre-primario); border-color: var(--texto-sobre-primario); background: transparent; }
+@keyframes e404-flota { to { transform: translateY(-8px) rotate(-4deg); } }
