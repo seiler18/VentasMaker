@@ -4,7 +4,7 @@ Reemplazo propio de `catalogo.treinta.co/monik10`, sin mensualidad:
 
 | Pieza | Dónde vive | Costo |
 |---|---|---|
-| **Catálogo público** (buscar, categorías, carrito, pedido por WhatsApp) | GitHub Pages — `https://seiler18.github.io/VentasMaker/` | $0 |
+| **Catálogo público** (buscar, categorías, carrito, reserva para retiro con número de pedido, despacho por WhatsApp; con sesión, **modo caja**) | GitHub Pages — `https://seiler18.github.io/VentasMaker/` | $0 |
 | **Panel de administración** (vender con escáner, inventario, reportes, etiquetas, usuarios) | `https://seiler18.github.io/VentasMaker/admin.html` | $0 |
 | **Base de datos + API** | Una hoja de Google Sheets + Apps Script | $0 |
 
@@ -15,8 +15,8 @@ Reemplazo propio de `catalogo.treinta.co/monik10`, sin mensualidad:
  GitHub Pages ──────── fetch ────────► Apps Script (doGet / doPost)
  (HTML/CSS/JS estático)                 │  sesión, permisos, bloqueo
    │                                    ▼
-   └─ pedido ─► WhatsApp de la tienda   Google Sheet
-                                         Productos · Ventas · Movimientos
+   ├─ retiro ─► pedido P1042 (hoja)     Google Sheet
+   └─ despacho ─► WhatsApp de la tienda  Productos · Ventas · Movimientos · Pedidos
                                          Usuarios · Config · Registro
                                          Resumen diario/semanal/mensual/anual
 ```
@@ -79,9 +79,21 @@ traerlos del Excel (ver «Importar el Excel» abajo).
 - **Un producto sin código:** *Etiquetas* → imprime su SKU como código de barras
   (50×30 mm). Si trae código de fábrica y el sistema no lo conoce, al escanearlo
   aparece «Asignar a un producto…».
-- **Pedidos de WhatsApp:** llegan al teléfono de la tienda con el detalle y el
-  total. El stock se descuenta cuando se registra la venta en el panel (canal
-  «local» por ahora).
+- **Vender desde el catálogo (modo caja):** en el panel, *Vender en el
+  catálogo*. El catálogo se abre con una barra oscura «Modo caja»: la pistola
+  suma el producto aunque el cursor no esté en ningún campo (o *Agregar*), y
+  *Finalizar venta* pide cliente (nombre y contacto, opcionales), medio de pago
+  y N° de comprobante, descuenta el stock en la hoja y muestra «¡Gracias por la
+  compra!». *Salir del modo caja* vuelve a la vista de cliente; el pie ofrece
+  volver.
+- **Pedido para retiro:** el cliente elige *Retiro en tienda* y recibe un número
+  (P1042); el pedido no descuenta stock. Cuando llega: *Cobrar pedido* en la
+  barra de la caja (o *Pedidos → Cobrar* en el panel), escribir el número, elegir
+  el medio de pago y *Finalizar venta*: se descuenta el stock y el pedido queda
+  «Cobrado». Los que no vienen se cancelan en *Pedidos*.
+- **Despacho:** se coordina por WhatsApp; el mensaje avisa que el envío no está
+  incluido y pregunta su costo. Se cobra después en modo caja con los datos del
+  cliente.
 - **Reportes:** panel *Reportes* (día / semana / mes / año, más vendidos, medios
   de pago, stock bajo, exportar CSV) y, en la hoja, las pestañas *Resumen …* que
   se reescriben cada noche. Con un correo en *Ajustes* llega el resumen del día.

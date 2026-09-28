@@ -62,7 +62,7 @@ if (quiereVivo) {
   if (j) {
     const tienda = {}
     CONFIG_PUBLICA.forEach((k) => { if (j.tienda?.[k] !== undefined) tienda[k] = texto(j.tienda[k], 2000) })
-    salida = { generado: Date.now(), tienda, productos: j.productos.filter((p) => p && p.id && p.nombre).map(limpiar) }
+    salida = { generado: Date.now(), srv: Number(j.srv) || 0, tienda, productos: j.productos.filter((p) => p && p.id && p.nombre).map(limpiar) }
   }
 }
 if (!salida) {

@@ -6,6 +6,8 @@
 
      GET  ?accion=catalogo        → catálogo público (sin costo ni datos internos)
      POST {accion, token, ...}    → todo lo demás; exige sesión salvo `login`
+                                    y `crearPedido` (el cliente que reserva
+                                    un pedido para retirar en tienda)
 
    Por qué POST con Content-Type text/plain: es una "petición simple" para
    CORS, así que el navegador no manda preflight OPTIONS — que Apps Script no
@@ -31,16 +33,24 @@ const HOJAS = {
   productos: ['id', 'sku', 'codigo', 'nombre', 'descripcion', 'categoria', 'precio', 'costo',
               'stock', 'stock_minimo', 'visible', 'imagen', 'creado', 'actualizado'],
   ventas:    ['venta_id', 'fecha', 'usuario', 'producto_id', 'sku', 'nombre', 'cantidad',
-              'precio_unit', 'descuento', 'subtotal', 'medio_pago', 'canal', 'nota', 'anulada'],
+              'precio_unit', 'descuento', 'subtotal', 'medio_pago', 'canal', 'nota', 'anulada',
+              'cliente', 'contacto', 'comprobante', 'pedido_id'],
   movimientos: ['fecha', 'usuario', 'producto_id', 'nombre', 'tipo', 'delta', 'stock_final', 'nota'],
   usuarios:  ['usuario', 'nombre', 'rol', 'sal', 'hash', 'activo', 'creado', 'ultimo_login', 'debe_cambiar'],
   config:    ['clave', 'valor'],
   registro:  ['fecha', 'usuario', 'accion', 'detalle'],
+  pedidos:   ['pedido_id', 'fecha', 'estado', 'entrega', 'cliente', 'celular', 'direccion', 'nota',
+              'items', 'total', 'venta_id', 'atendido_por', 'actualizado'],
 };
 const NOMBRE_HOJA = {
   productos: 'Productos', ventas: 'Ventas', movimientos: 'Movimientos',
-  usuarios: 'Usuarios', config: 'Config', registro: 'Registro',
+  usuarios: 'Usuarios', config: 'Config', registro: 'Registro', pedidos: 'Pedidos',
 };
+/* Hojas que el script crea solo la primera vez que las necesita: así una
+   tienda instalada antes de que existieran no tiene que volver a correr
+   instalar(). A las demás, las columnas nuevas se les agregan al escribir
+   (ver columnas_). */
+const CREA_SOLA = ['pedidos'];
 
 const ROLES = ['admin', 'vendedor'];
 const SESION_SEG = 6 * 60 * 60;        // máximo que admite CacheService
@@ -54,19 +64,26 @@ const MAX_REGISTRO = 5000;             // filas de Registro que se conservan
 const CATALOGO_SEG = 6 * 60 * 60;      // caché del catálogo: toda escritura la invalida
 const IDEM_SEG = 10 * 60;              // cuánto se recuerda la respuesta de una escritura
 const EN_CURSO_SEG = 6 * 60;           // lo que dura como máximo una ejecución
+const PEDIDOS_POR_MINUTO = 10;         // freno global de pedidos públicos
+const PEDIDOS_POR_CELULAR = 5;         // por número, cada PEDIDOS_CELULAR_SEG
+const PEDIDOS_CELULAR_SEG = 60 * 60;
+const MAX_PENDIENTES = 300;            // tope de pedidos sin atender
+const MAX_LINEAS_PEDIDO = 50;
 
 /* Versión del contrato con el front. Viaja en cada respuesta (`srv`) para
    que el front sepa qué puede pedir: con la 2, reintentar escrituras con
-   `idem` y mandar ajustes de stock en lote. Un front nuevo contra un
-   backend viejo sigue funcionando, solo que sin eso. */
-const VERSION_API = 2;
+   `idem` y mandar ajustes de stock en lote; con la 3, pedidos para retiro
+   (`crearPedido`, `pedidos`, `cancelarPedido`) y datos del cliente en la
+   venta. Un front nuevo contra un backend viejo sigue funcionando, solo que
+   sin eso. */
+const VERSION_API = 3;
 
 /* Escrituras que aceptan clave de idempotencia (`idem`). Apps Script a veces
    ejecuta la acción y aun así el navegador recibe un 404 o se queda sin
    respuesta: sin esto, reintentar un cobro lo registraría dos veces.
    cambiarClave no está: su respuesta trae un token y no debe quedar en caché. */
 const IDEMPOTENTES = ['vender', 'anularVenta', 'guardarProducto', 'eliminarProducto', 'ajustarStock',
-                      'subirImagen', 'guardarUsuario', 'guardarConfig'];
+                      'subirImagen', 'guardarUsuario', 'guardarConfig', 'crearPedido', 'cancelarPedido'];
 
 /* Qué puede hacer cada rol. Lo que no aparece aquí no existe. */
 const PERMISOS = {
@@ -77,6 +94,8 @@ const PERMISOS = {
   buscarCodigo:    ['admin', 'vendedor'],
   vender:          ['admin', 'vendedor'],
   ventasDelDia:    ['admin', 'vendedor'],
+  pedidos:         ['admin', 'vendedor'],
+  cancelarPedido:  ['admin', 'vendedor'],
   guardarProducto: ['admin'],
   eliminarProducto:['admin'],
   ajustarStock:    ['admin'],
@@ -126,6 +145,10 @@ function doPost(e) {
   try {
     const accion = String(body.accion || '');
     if (accion === 'login') return json_(login_(body));
+    // Única escritura sin sesión: la hace el cliente desde el catálogo. No
+    // toca el stock (se descuenta al cobrarlo en la tienda) y tiene sus
+    // propios frenos (ver crearPedido_).
+    if (accion === 'crearPedido') return json_(conIdem_(accion, body, { usuario: 'publico' }, crearPedido_));
 
     if (!Object.prototype.hasOwnProperty.call(PERMISOS, accion)) {
       return json_({ ok: false, error: 'Acción no válida' });
@@ -166,10 +189,11 @@ function json_(obj) {
    primera ejecución sigue en marcha, un reintento recibe `enCurso` en vez de
    ejecutarla otra vez; cuando termina, recibe la misma respuesta. Si la
    acción falla, la marca se borra: reintentar entonces es seguro. */
-function conIdem_(accion, body, ses) {
+function conIdem_(accion, body, ses, fn) {
+  fn = fn || ACCIONES[accion];
   const idem = IDEMPOTENTES.indexOf(accion) >= 0 && typeof body.idem === 'string' &&
                /^[A-Za-z0-9_-]{16,64}$/.test(body.idem) ? 'idem_' + sha256_(ses.usuario + ':' + body.idem) : '';
-  if (!idem) return { ok: true, ...ACCIONES[accion](body, ses) };
+  if (!idem) return { ok: true, ...fn(body, ses) };
   const cache = CacheService.getScriptCache();
   const previo = cache.get(idem);
   if (previo === 'en_curso') return { ok: false, error: 'La operación anterior aún se está procesando', enCurso: true };
@@ -177,7 +201,7 @@ function conIdem_(accion, body, ses) {
   cache.put(idem, 'en_curso', EN_CURSO_SEG);
   let res;
   try {
-    res = { ok: true, ...ACCIONES[accion](body, ses) };
+    res = { ok: true, ...fn(body, ses) };
   } catch (err) {
     cache.remove(idem);
     throw err;
@@ -248,7 +272,12 @@ const ACCIONES = {
     const items = Array.isArray(b.items) ? b.items : [];
     if (!items.length || items.length > 200) falla_('La venta no tiene productos');
     const medio = MEDIOS_PAGO.indexOf(b.medioPago) >= 0 ? b.medioPago : 'efectivo';
-    const canal = b.canal === 'whatsapp' ? 'whatsapp' : 'local';
+    // Pedido reservado desde el catálogo: la venta lo completa en la misma
+    // operación (o no se completa ninguno de los dos).
+    const pedidoId = b.pedidoId ? normPedido_(b.pedidoId) : '';
+    const canal = pedidoId ? 'web' : b.canal === 'whatsapp' ? 'whatsapp' : 'local';
+    let cliente = texto_(b.cliente, 60), contacto = texto_(b.contacto, 60);
+    const comprobante = texto_(b.comprobante, 40);
     const descuentoTotal = entero_(b.descuento, 0);
     if (descuentoTotal < 0) falla_('Descuento no válido');
     if (descuentoTotal > 0 && ses.rol !== 'admin') falla_('Solo un admin puede aplicar descuentos');
@@ -262,6 +291,15 @@ const ACCIONES = {
       // Object.prototype) y la venta seguiría con datos que no son de la hoja.
       const porId = Object.create(null);
       tabla.filas.forEach(p => porId[p.id] = p);
+
+      let pedido = null;
+      if (pedidoId) {
+        pedido = existe_('pedidos') && leer_('pedidos').filas.find(x => String(x.pedido_id) === pedidoId);
+        if (!pedido) falla_('No existe el pedido ' + pedidoId);
+        if (pedido.estado !== 'pendiente') falla_('El pedido ' + pedidoId + ' ya está ' + pedido.estado);
+        cliente = cliente || texto_(pedido.cliente, 60);
+        contacto = contacto || texto_(pedido.celular, 60);
+      }
 
       // Agrupa por producto: el mismo código escaneado dos veces es una línea.
       const cant = Object.create(null);
@@ -304,14 +342,20 @@ const ACCIONES = {
         actualizarFila_('productos', p._fila, { stock: stockFinal, actualizado: ahora });
         p.stock = stockFinal;
         filasVenta.push([ventaId, ahora, ses.usuario, id, p.sku, p.nombre, cant[id], Number(p.precio),
-                         d, bruto - d, medio, canal, texto_(b.nota, 200), false]);
+                         d, bruto - d, medio, canal, texto_(b.nota, 200), false,
+                         cliente, contacto, comprobante, pedidoId]);
         filasMov.push([ahora, ses.usuario, id, p.nombre, 'venta', -cant[id], stockFinal, ventaId]);
       });
       agregar_('ventas', filasVenta);
       agregar_('movimientos', filasMov);
+      if (pedido) {
+        actualizarFila_('pedidos', pedido._fila, { estado: 'completado', venta_id: ventaId,
+                                                   atendido_por: ses.usuario, actualizado: ahora });
+      }
       invalidarCatalogo_();
       return {
         ventaId: ventaId,
+        pedidoId: pedidoId,
         total: total - descuentoTotal,
         stock: ids.map(id => ({ id: id, stock: porId[id].stock })),
       };
@@ -346,6 +390,13 @@ const ACCIONES = {
         }
       });
       if (mov.length) agregar_('movimientos', mov);
+      // Si la venta cobraba un pedido, el pedido vuelve a quedar por cobrar:
+      // lo normal es que se anule por un error al cobrarlo.
+      const pedidoId = String(ventas[0].pedido_id || '');
+      if (pedidoId && existe_('pedidos')) {
+        const ped = leer_('pedidos').filas.find(x => String(x.pedido_id) === pedidoId && x.venta_id === ventaId);
+        if (ped) actualizarFila_('pedidos', ped._fila, { estado: 'pendiente', venta_id: '', actualizado: ahora });
+      }
       registrar_(ses.usuario, 'anularVenta', ventaId);
       invalidarCatalogo_();
       return {};
@@ -463,6 +514,31 @@ const ACCIONES = {
     archivo.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     registrar_(ses.usuario, 'subirImagen', archivo.getId());
     return { url: 'https://lh3.googleusercontent.com/d/' + archivo.getId() + '=w800' };
+  },
+
+  /* Con `id`, un pedido (el número que trae el cliente: "P1042", "p 1042" o
+     "1042"). Sin él, los pendientes y los últimos atendidos. */
+  pedidos: (b) => {
+    const filas = existe_('pedidos') ? leer_('pedidos').filas.map(limpiarPedido_) : [];
+    if (b.id !== undefined) {
+      const id = normPedido_(b.id);
+      return { pedido: filas.find(p => p.pedidoId === id) || null };
+    }
+    const pendientes = filas.filter(p => p.estado === 'pendiente');
+    const otros = filas.filter(p => p.estado !== 'pendiente').slice(-50);
+    return { pedidos: pendientes.concat(otros).sort((x, y) => new Date(y.fecha) - new Date(x.fecha)) };
+  },
+
+  cancelarPedido: (b, ses) => {
+    const id = normPedido_(b.id);
+    return conBloqueo_(() => {
+      const p = existe_('pedidos') && leer_('pedidos').filas.find(x => String(x.pedido_id) === id);
+      if (!p) falla_('No existe el pedido ' + id);
+      if (p.estado !== 'pendiente') falla_('El pedido ' + id + ' ya está ' + p.estado);
+      actualizarFila_('pedidos', p._fila, { estado: 'cancelado', atendido_por: ses.usuario, actualizado: new Date() });
+      registrar_(ses.usuario, 'cancelarPedido', id);
+      return {};
+    });
   },
 
   reporte: (b) => reporte_(String(b.periodo || 'dia'), b.desde, b.hasta),
@@ -589,6 +665,102 @@ function onEdit(e) {
     const n = e && e.range && e.range.getSheet().getName();
     if (n === NOMBRE_HOJA.productos || n === NOMBRE_HOJA.config) invalidarCatalogo_();
   } catch (err) { /* nunca debe molestar al editar */ }
+}
+
+/* ============================================================
+   PEDIDOS DEL CATÁLOGO (retiro en tienda)
+   ============================================================ */
+
+/* El cliente arma su carrito en el catálogo y reserva: recibe un número
+   ("P1042") con el que llega a la tienda, y ahí la venta se cobra con
+   `vender` + `pedidoId`. Hasta entonces el pedido NO descuenta stock: así
+   nadie puede dejar la tienda sin inventario llenándola de pedidos falsos.
+
+   Es la única escritura pública, así que:
+   - freno global por minuto y por celular, antes de leer la hoja;
+   - tope de pedidos pendientes;
+   - precios y nombres los pone el servidor; el cliente solo manda id y
+     cantidad, y solo de productos visibles con stock;
+   - todo texto pasa por texto_() y celda_() como cualquier otra escritura. */
+function crearPedido_(b) {
+  const cache = CacheService.getScriptCache();
+  const kMin = 'pedidos_' + Math.floor(Date.now() / 60000);
+  const enEsteMinuto = Number(cache.get(kMin) || 0);
+  if (enEsteMinuto >= PEDIDOS_POR_MINUTO) falla_('Estamos recibiendo muchos pedidos. Intenta en un minuto o escríbenos por WhatsApp.');
+  cache.put(kMin, String(enEsteMinuto + 1), 120);
+
+  const nombre = texto_(b.nombre, 60);
+  if (!nombre) falla_('Escribe tu nombre');
+  const celular = String(b.celular || '').replace(/\D/g, '');
+  if (celular.length < 8 || celular.length > 12) falla_('Revisa el número de celular');
+  const kCel = 'pedcel_' + sha256_(celular);
+  const delCelular = Number(cache.get(kCel) || 0);
+  if (delCelular >= PEDIDOS_POR_CELULAR) falla_('Ya hiciste varios pedidos seguidos. Escríbenos por WhatsApp y te ayudamos.');
+  const items = Array.isArray(b.items) ? b.items : [];
+  if (!items.length || items.length > MAX_LINEAS_PEDIDO) falla_('El pedido no tiene productos');
+  if (leerConfig_().retiro === 'no') falla_('El retiro en tienda no está disponible');
+
+  return conBloqueo_(() => {
+    const porId = Object.create(null);
+    leer_('productos').filas.forEach(p => porId[p.id] = p);
+    const cant = Object.create(null);
+    items.forEach(it => {
+      const id = String(it && it.id || '');
+      const c = entero_(it && it.cantidad, 0);
+      if (!porId[id] || !si_(porId[id].visible)) falla_('Un producto del pedido ya no está en el catálogo. Actualiza la página.');
+      if (c <= 0 || c > 1000) falla_('Cantidad no válida');
+      cant[id] = (cant[id] || 0) + c;
+    });
+    const lineas = Object.keys(cant).map(id => {
+      const p = porId[id];
+      const stock = Number(p.stock);
+      if (!(stock >= cant[id])) falla_(stock > 0 ? 'Solo quedan ' + stock + ' de ' + p.nombre : p.nombre + ' se agotó');
+      const precio = Number(p.precio);
+      if (!Number.isFinite(precio) || precio < 0) falla_('Precio no válido en la hoja: ' + p.nombre);
+      return { id: id, sku: String(p.sku), nombre: String(p.nombre), cantidad: cant[id], precio: precio };
+    });
+    const total = lineas.reduce((s, l) => s + l.cantidad * l.precio, 0);
+
+    const tabla = leer_('pedidos');
+    if (tabla.filas.filter(p => p.estado === 'pendiente').length >= MAX_PENDIENTES) {
+      falla_('Ahora no podemos recibir más pedidos por aquí. Escríbenos por WhatsApp.');
+    }
+    const pedidoId = siguientePedido_(tabla.filas);
+    const ahora = new Date();
+    agregar_('pedidos', [[pedidoId, ahora, 'pendiente', 'retiro', nombre, celular, '', texto_(b.nota, 300),
+                          JSON.stringify(lineas), total, '', '', ahora]]);
+    cache.put(kCel, String(delCelular + 1), PEDIDOS_CELULAR_SEG);
+    registrar_('publico', 'crearPedido', pedidoId + ' …' + celular.slice(-4));
+    return { pedidoId: pedidoId, total: total, items: lineas };
+  });
+}
+
+function siguientePedido_(filas) {
+  let max = 1000;
+  filas.forEach(p => { const m = /^P(\d+)$/.exec(String(p.pedido_id)); if (m) max = Math.max(max, Number(m[1])); });
+  return 'P' + (max + 1);
+}
+
+/* "P1042", "p 1042", "#1042" o "1042" → "P1042". */
+function normPedido_(v) {
+  const s = String(v === undefined || v === null ? '' : v).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20);
+  return /^\d+$/.test(s) ? 'P' + s : s;
+}
+
+function limpiarPedido_(p) {
+  let items = [];
+  try { items = JSON.parse(String(p.items || '[]')); } catch (e) { /* celda editada a mano */ }
+  if (!Array.isArray(items)) items = [];
+  return {
+    pedidoId: String(p.pedido_id), fecha: p.fecha, estado: String(p.estado || 'pendiente'),
+    entrega: String(p.entrega || 'retiro'), cliente: String(p.cliente || ''), celular: String(p.celular || ''),
+    direccion: String(p.direccion || ''), nota: String(p.nota || ''),
+    items: items.filter(i => i && typeof i === 'object').map(i => ({
+      id: String(i.id || ''), sku: String(i.sku || ''), nombre: String(i.nombre || ''),
+      cantidad: Number(i.cantidad) || 0, precio: Number(i.precio) || 0 })),
+    total: Number(p.total) || 0, ventaId: String(p.venta_id || ''), atendidoPor: String(p.atendido_por || ''),
+    actualizado: p.actualizado,
+  };
 }
 
 /* ============================================================
@@ -933,9 +1105,31 @@ function ss_() {
 function hoja_(k) {
   const hs = memo_.hojas || (memo_.hojas = {});
   if (hs[k]) return hs[k];
-  const h = ss_().getSheetByName(NOMBRE_HOJA[k]);
+  let h = ss_().getSheetByName(NOMBRE_HOJA[k]);
+  if (!h && CREA_SOLA.indexOf(k) >= 0) {
+    h = ss_().insertSheet(NOMBRE_HOJA[k]);
+    h.getRange(1, 1, 1, HOJAS[k].length).setValues([HOJAS[k]]).setFontWeight('bold');
+    h.setFrozenRows(1);
+  }
   if (!h) throw new Error('Falta la hoja ' + NOMBRE_HOJA[k] + '. Ejecuta instalar().');
   return (hs[k] = h);
+}
+
+/* Para leer una hoja de CREA_SOLA sin crearla fuera de un bloqueo. */
+function existe_(k) {
+  return Boolean((memo_.hojas && memo_.hojas[k]) || ss_().getSheetByName(NOMBRE_HOJA[k]));
+}
+
+/* El encabezado para ESCRIBIR: si a la hoja le faltan columnas de HOJAS (una
+   planilla de antes de que existieran), se agregan al final. Solo lo usan
+   agregar_ y actualizarFila_, que se llaman dentro de conBloqueo_ (salvo
+   registrar_, cuya hoja no cambia): dos ejecuciones no las agregan a la vez. */
+function columnas_(k) {
+  const cab = cabecera_(k);
+  const faltan = HOJAS[k].filter(c => cab.indexOf(c) === -1);
+  if (!faltan.length) return cab;
+  hoja_(k).getRange(1, cab.length + 1, 1, faltan.length).setValues([faltan]).setFontWeight('bold');
+  return (memo_.cab[k] = cab.concat(faltan));
 }
 
 function cabecera_(k) {
@@ -962,7 +1156,7 @@ function leer_(k) {
 
 function actualizarFila_(k, fila, cambios) {
   const h = hoja_(k);
-  const cab = cabecera_(k);
+  const cab = columnas_(k);
   Object.keys(cambios).forEach(c => {
     const j = cab.indexOf(c);
     if (j >= 0) h.getRange(fila, j + 1).setValue(celda_(cambios[c]));
@@ -974,7 +1168,7 @@ function agregar_(k, filas) {
   const h = hoja_(k);
   // Las filas llegan en el orden de HOJAS[k]; se recolocan según el
   // encabezado real por si alguien movió columnas en la planilla.
-  const cab = cabecera_(k);
+  const cab = columnas_(k);
   const orden = HOJAS[k];
   const salida = filas.map(f => cab.map(c => {
     const j = orden.indexOf(c);
@@ -1033,7 +1227,8 @@ function agruparVentas_(filas) {
   const g = {};
   filas.forEach(v => {
     const x = g[v.venta_id] || (g[v.venta_id] = { ventaId: v.venta_id, fecha: v.fecha, usuario: v.usuario,
-      medio: v.medio_pago, anulada: si_(v.anulada), total: 0, items: [] });
+      medio: v.medio_pago, anulada: si_(v.anulada), total: 0, items: [],
+      cliente: String(v.cliente || ''), comprobante: String(v.comprobante || ''), pedidoId: String(v.pedido_id || '') });
     x.total += Number(v.subtotal) || 0;
     x.items.push({ nombre: v.nombre, cantidad: Number(v.cantidad), subtotal: Number(v.subtotal) });
   });

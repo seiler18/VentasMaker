@@ -12,6 +12,7 @@ import { demo, llamar, sesion, inventario, perfil } from './estado.js'
 import { reiniciarDemo } from './demo.js'
 
 import vender from './vender.js'
+import pedidos from './pedidos.js'
 import inventarioVista from './inventario.js'
 import reportes from './reportes.js'
 import etiquetas from './etiquetas.js'
@@ -24,6 +25,7 @@ protegerMarco()
    en cada acción: ocultar un botón aquí es comodidad, no seguridad. */
 const VISTAS = [
   { id: 'vender', titulo: 'Vender', roles: ['admin', 'vendedor'], vista: vender },
+  { id: 'pedidos', titulo: 'Pedidos', roles: ['admin', 'vendedor'], vista: pedidos },
   { id: 'inventario', titulo: 'Inventario', roles: ['admin'], vista: inventarioVista },
   { id: 'reportes', titulo: 'Reportes', roles: ['admin'], vista: reportes },
   { id: 'etiquetas', titulo: 'Etiquetas', roles: ['admin'], vista: etiquetas },
@@ -107,6 +109,7 @@ function pintarShell() {
         ${visibles.map((v) => html`<a href="#${v.id}" data-vista="${v.id}">${v.titulo}</a>`)}
       </nav>
       <div class="barra-usuario">
+        ${sesion.debeCambiar ? '' : html`<a class="btn btn-primario btn-chico ir-catalogo" href="${import.meta.env.BASE_URL}#caja" aria-label="Vender en el catálogo" title="El catálogo como punto de venta: escanea, agrega y finaliza la venta">${icono.carro}<span>Vender en el catálogo</span></a>`}
         <span class="quien">${sesion.nombre || sesion.usuario} · ${sesion.rol}</span>
         ${demo ? html`<button class="btn btn-borde btn-chico" type="button" id="reiniciar-demo">Reiniciar demo</button>` : ''}
         <button class="btn btn-borde btn-chico" type="button" id="salir">${icono.salir} Salir</button>

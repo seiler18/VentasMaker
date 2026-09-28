@@ -19,7 +19,7 @@ import { normalizar } from '../lib/formato.js'
 export const demo = !hayBackend()
 export const llamar = demo ? llamarDemo : llamarApi
 /* Qué entiende el backend conectado (el demo imita siempre la última versión). */
-export const capacidad = demo ? { reintentaEscrituras: true, ajusteEnLote: true } : backend
+export const capacidad = demo ? { version: 3, reintentaEscrituras: true, ajusteEnLote: true, pedidos: true } : backend
 
 export const sesion = { usuario: '', nombre: '', rol: '', debeCambiar: false }
 export const esAdmin = () => sesion.rol === 'admin'

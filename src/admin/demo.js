@@ -19,10 +19,12 @@ async function base() {
     const productos = (await r.json()).map((p) => ({ ...p, costo: 0, stock_minimo: 1 }))
     db = { productos, ventas: [], movimientos: [], usuarios: [{ usuario: 'demo', nombre: 'Demo', rol: 'admin', activo: true }], config: {} }
   }
+  db.pedidos ||= []   // demo guardada antes de que existieran los pedidos
   return db
 }
 const guardar = () => { try { localStorage.setItem(CLAVE, JSON.stringify(db)) } catch { /* lleno */ } }
 const falla = (m) => { throw new Error(m) }
+const normPedido = (v) => { const s = String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, ''); return /^\d+$/.test(s) ? 'P' + s : s }
 
 const ACC = {
   login: (b) => (b.usuario === 'demo' && b.clave === 'demo'
@@ -39,6 +41,11 @@ const ACC = {
   vender: (b) => {
     const ventaId = 'V' + Date.now().toString().slice(-8)
     let total = 0
+    const pedidoId = b.pedidoId ? normPedido(b.pedidoId) : ''
+    const pedido = pedidoId && db.pedidos.find((x) => x.pedidoId === pedidoId)
+    if (pedidoId && !pedido) falla(`No existe el pedido ${pedidoId}`)
+    if (pedido && pedido.estado !== 'pendiente') falla(`El pedido ${pedidoId} ya está ${pedido.estado}`)
+    const cliente = b.cliente || pedido?.cliente || '', contacto = b.contacto || pedido?.celular || ''
     b.items.forEach((it) => {
       const p = db.productos.find((x) => x.id === it.id)
       if (!p) falla('Producto no encontrado')
@@ -50,19 +57,22 @@ const ACC = {
       p.stock -= it.cantidad
       total += p.precio * it.cantidad
       db.ventas.push({ venta_id: ventaId, fecha, usuario: 'demo', producto_id: p.id, nombre: p.nombre, cantidad: it.cantidad,
-        precio_unit: p.precio, subtotal: p.precio * it.cantidad, medio_pago: b.medioPago, anulada: false })
+        precio_unit: p.precio, subtotal: p.precio * it.cantidad, medio_pago: b.medioPago, anulada: false,
+        cliente, contacto, comprobante: b.comprobante || '', pedido_id: pedidoId })
       db.movimientos.push({ fecha, usuario: 'demo', producto_id: p.id, nombre: p.nombre, tipo: 'venta', delta: -it.cantidad, stock_final: p.stock, nota: ventaId })
     })
     const desc = Math.min(Number(b.descuento) || 0, total)
     if (desc) db.ventas.filter((v) => v.venta_id === ventaId).at(-1).subtotal -= desc
+    if (pedido) Object.assign(pedido, { estado: 'completado', ventaId, atendidoPor: 'demo', actualizado: fecha })
     guardar()
-    return { ventaId, total: total - desc, stock: b.items.map((it) => ({ id: it.id, stock: db.productos.find((p) => p.id === it.id).stock })) }
+    return { ventaId, pedidoId, total: total - desc, stock: b.items.map((it) => ({ id: it.id, stock: db.productos.find((p) => p.id === it.id).stock })) }
   },
   ventasDelDia: () => {
     const hoy = new Date().toDateString()
     const g = {}
     db.ventas.filter((v) => new Date(v.fecha).toDateString() === hoy).forEach((v) => {
-      const x = g[v.venta_id] ||= { ventaId: v.venta_id, fecha: v.fecha, usuario: v.usuario, medio: v.medio_pago, anulada: v.anulada, total: 0, items: [] }
+      const x = g[v.venta_id] ||= { ventaId: v.venta_id, fecha: v.fecha, usuario: v.usuario, medio: v.medio_pago, anulada: v.anulada, total: 0, items: [],
+        cliente: v.cliente || '', comprobante: v.comprobante || '', pedidoId: v.pedido_id || '' }
       x.total += v.subtotal
       x.items.push({ nombre: v.nombre, cantidad: v.cantidad, subtotal: v.subtotal })
     })
@@ -72,6 +82,8 @@ const ACC = {
     const vs = db.ventas.filter((v) => v.venta_id === b.ventaId)
     if (vs.some((v) => v.anulada)) falla('La venta ya estaba anulada')
     vs.forEach((v) => { v.anulada = true; const p = db.productos.find((x) => x.id === v.producto_id); if (p) p.stock += v.cantidad })
+    const ped = vs[0]?.pedido_id && db.pedidos.find((x) => x.pedidoId === vs[0].pedido_id && x.ventaId === b.ventaId)
+    if (ped) Object.assign(ped, { estado: 'pendiente', ventaId: '' })
     guardar(); return {}
   },
   guardarProducto: (b) => {
@@ -112,6 +124,42 @@ const ACC = {
     return lote ? { stock: cambios.map(({ p }) => ({ id: p.id, stock: p.stock })) } : { stock: cambios[0].final }
   },
   subirImagen: () => falla('La subida de imágenes necesita el backend'),
+  // El pedido del catálogo, como crearPedido_ de Code.gs: no toca el stock.
+  crearPedido: (b) => {
+    const nombre = String(b.nombre || '').trim().slice(0, 60)
+    const celular = String(b.celular || '').replace(/\D/g, '')
+    if (!nombre) falla('Escribe tu nombre')
+    if (celular.length < 8 || celular.length > 12) falla('Revisa el número de celular')
+    if (!b.items?.length) falla('El pedido no tiene productos')
+    const cant = {}
+    b.items.forEach((it) => {
+      const p = db.productos.find((x) => x.id === it.id)
+      if (!p || p.visible === false) falla('Un producto del pedido ya no está en el catálogo. Actualiza la página.')
+      cant[it.id] = (cant[it.id] || 0) + Number(it.cantidad)
+    })
+    const items = Object.entries(cant).map(([id, c]) => {
+      const p = db.productos.find((x) => x.id === id)
+      if (p.stock < c) falla(p.stock > 0 ? `Solo quedan ${p.stock} de ${p.nombre}` : `${p.nombre} se agotó`)
+      return { id, sku: p.sku, nombre: p.nombre, cantidad: c, precio: p.precio }
+    })
+    const n = Math.max(1000, ...db.pedidos.map((x) => Number(x.pedidoId.slice(1)) || 0)) + 1
+    const pedido = { pedidoId: `P${n}`, fecha: new Date().toISOString(), estado: 'pendiente', entrega: 'retiro', cliente: nombre, celular,
+      direccion: '', nota: String(b.nota || '').slice(0, 300), items, total: items.reduce((s, i) => s + i.cantidad * i.precio, 0), ventaId: '', atendidoPor: '' }
+    db.pedidos.push(pedido)
+    guardar()
+    return { pedidoId: pedido.pedidoId, total: pedido.total, items }
+  },
+  pedidos: (b) => {
+    if (b.id !== undefined) return { pedido: db.pedidos.find((x) => x.pedidoId === normPedido(b.id)) || null }
+    return { pedidos: [...db.pedidos].reverse().filter((x, i) => x.estado === 'pendiente' || i < 50) }
+  },
+  cancelarPedido: (b) => {
+    const p = db.pedidos.find((x) => x.pedidoId === normPedido(b.id))
+    if (!p) falla(`No existe el pedido ${normPedido(b.id)}`)
+    if (p.estado !== 'pendiente') falla(`El pedido ${p.pedidoId} ya está ${p.estado}`)
+    Object.assign(p, { estado: 'cancelado', atendidoPor: 'demo' })
+    guardar(); return {}
+  },
   reporte: (b) => {
     const clave = { dia: (d) => d.slice(0, 10), semana: (d) => d.slice(0, 10), mes: (d) => d.slice(0, 7), anio: (d) => d.slice(0, 4) }[b.periodo]
     const vs = db.ventas.filter((v) => !v.anulada)
@@ -145,7 +193,7 @@ export async function llamarDemo(accion, datos = {}) {
   if (!ACC[accion]) throw new Error('Acción no válida')
   // Un poco de espera para que la interfaz se comporte como con red real.
   await new Promise((r) => setTimeout(r, 120))
-  return { ok: true, srv: 2, ...structuredClone(ACC[accion](structuredClone(datos))) }
+  return { ok: true, srv: 3, ...structuredClone(ACC[accion](structuredClone(datos))) }
 }
 
 export function reiniciarDemo() {

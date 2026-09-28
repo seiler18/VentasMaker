@@ -11,8 +11,9 @@ Modelo de amenazas y decisiones de seguridad: `SECURITY.md`.
 
 | Qué | Dónde |
 |---|---|
-| Catálogo, carrito, pedido WhatsApp | `index.html`, `src/tienda/` |
-| Panel (una vista por archivo) | `admin.html`, `src/admin/{vender,inventario,reportes,etiquetas,usuarios,ajustes}.js` |
+| Catálogo, carrito, reserva para retiro, despacho por WhatsApp | `index.html`, `src/tienda/main.js`, `carrito.js` |
+| Modo caja (el catálogo como punto de venta, con sesión del panel) | `src/tienda/caja.js`, `src/styles/caja.css` |
+| Panel (una vista por archivo) | `admin.html`, `src/admin/{vender,pedidos,inventario,reportes,etiquetas,usuarios,ajustes}.js` |
 | Router del panel, roles por pestaña | `src/admin/main.js` (`VISTAS`) |
 | Backend de mentira para el modo demo | `src/admin/demo.js` — debe imitar a `Code.gs` |
 | Escape de HTML | `src/lib/dom.js` (`html`, `crudo`) |
@@ -56,7 +57,8 @@ Qué se hizo antes y por qué: `.claude/hitos/` (empieza por su `README.md`).
    `celda_()` (inyección de fórmulas).
 5. **El stock solo cambia por `vender`, `anularVenta` y `ajustarStock`** (uno
    o en lote con `items`), que dejan fila en *Movimientos*. `guardarProducto`
-   no toca el stock.
+   no toca el stock, ni `crearPedido` (la única escritura pública): el pedido
+   se descuenta al cobrarlo con `vender` + `pedidoId`.
 6. **Cada vista cuelga sus listeners de su propio contenedor** (`main.js` crea
    uno nuevo por vista). Reutilizarlo hizo que los listeners de Vender
    reaccionaran en Etiquetas.

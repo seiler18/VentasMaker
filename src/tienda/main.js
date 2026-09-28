@@ -5,16 +5,40 @@ import '../styles/efectos.css'
 
 import { protegerMarco } from '../lib/marco.js'
 import { html, crudo, pintar, $, $$ } from '../lib/dom.js'
-import { aviso, celebrar, desvanecer, panelError, sacudir } from '../lib/efectos.js'
+import { aviso, celebrar, conBoton, desvanecer, panelError, sacudir } from '../lib/efectos.js'
 import { clp, normalizar } from '../lib/formato.js'
 import { icono } from '../lib/iconos.js'
 import { urlImagen } from '../lib/imagen.js'
 import { leerHorario, estado, tablaHorario } from '../lib/horario.js'
-import { hayBackend, catalogo } from '../lib/api.js'
+import { hayBackend, catalogo, llamar, backend, pistaVersion, idAleatorio, token } from '../lib/api.js'
 import { TIENDA } from '../config.js'
 import { carrito } from './carrito.js'
 
 protegerMarco()
+
+/* Sin backend (modo demo) los pedidos van al backend de mentira del panel,
+   que se carga solo si alguien reserva. */
+const llamarTienda = (accion, datos, opciones) => hayBackend()
+  ? llamar(accion, datos, opciones)
+  : import('../admin/demo.js').then((m) => m.llamarDemo(accion, datos))
+
+/* MODO CAJA: quien entró al panel en esta pestaña (token y perfil en
+   sessionStorage, los mismos del panel) ve el catálogo como punto de venta:
+   escanea o agrega, y "Finalizar venta" la cobra y descuenta el stock. El
+   servidor vuelve a comprobar sesión y rol en cada venta; esto solo decide
+   qué se pinta. Todo lo de la caja vive en caja.js y solo se descarga aquí. */
+const CAJA_APAGADA = 'vm_caja_off'
+function leerSS(k) { try { return sessionStorage.getItem(k) } catch { return null } }
+function perfilPanel() { try { return JSON.parse(leerSS('vm_perfil') || 'null') } catch { return null } }
+// Llegar desde el panel ("Vender en el catálogo", o "Cobrar" un pedido) enciende la caja.
+if (/^#(caja|pedido=)/.test(location.hash)) { try { sessionStorage.removeItem(CAJA_APAGADA) } catch { /* nada */ } }
+if (location.hash === '#caja') history.replaceState(null, '', location.pathname)
+const PERFIL = token.get() && perfilPanel()
+const hayCaja = Boolean(PERFIL?.rol && !PERFIL.debeCambiar)
+const enCaja = hayCaja && !leerSS(CAJA_APAGADA)
+if (enCaja) carrito.usar('vm_carrito_caja')
+let caja = null
+const cajaLista = enCaja ? import('./caja.js').then((m) => { caja = m.iniciarCaja(ctxCaja()); return caja }) : null
 
 const TANDA = 48          // tarjetas por tanda: 440 de golpe tardan en móvil
 const POCAS = 3           // "¡Últimas N!" a partir de aquí
@@ -33,7 +57,8 @@ const estadoUI = {
   orden: 'alfa',
   vista: leerPref('vm_vista', 'rejilla'),
   mostrados: TANDA,
-  fuente: '',         // '' | 'copia' | 'estatica' | 'vivo': de dónde salió lo pintado
+  fuente: '',         // '' | 'copia' | 'estatica' | 'vivo' | 'caja': de dónde salieron los productos
+  pintado: false,
   firma: '',          // para no repintar si lo que llega es igual a lo que hay
 }
 
@@ -69,7 +94,9 @@ function pintarEsqueleto() {
    3. y por detrás, el inventario en vivo, que reemplaza sin saltos lo pintado.
    Si falla lo vivo no se molesta al cliente: ya está viendo el catálogo. */
 const CLAVE_COPIA = 'vm_catalogo'
-const RANGO = { '': 0, estatica: 1, copia: 1, vivo: 2 }
+/* 'caja': el inventario completo del panel (con sesión). Manda sobre el
+   catálogo público: trae los ocultos y los códigos de barras. */
+const RANGO = { '': 0, estatica: 1, copia: 1, vivo: 2, caja: 3 }
 
 function leerCopia() {
   try {
@@ -78,7 +105,7 @@ function leerCopia() {
   } catch { return null }
 }
 function guardarCopia(datos) {
-  try { localStorage.setItem(CLAVE_COPIA, JSON.stringify({ t: Date.now(), datos: { tienda: datos.tienda, productos: datos.productos } })) } catch { /* lleno */ }
+  try { localStorage.setItem(CLAVE_COPIA, JSON.stringify({ t: Date.now(), srv: datos.srv || 0, datos: { tienda: datos.tienda, productos: datos.productos } })) } catch { /* lleno */ }
 }
 
 async function cargarEstatica() {
@@ -87,7 +114,7 @@ async function cargarEstatica() {
       const r = await fetch(`${BASE}data/vivo.json`, { cache: 'no-cache' })
       if (r.ok) {
         const j = await r.json()
-        if (Array.isArray(j.productos) && j.productos.length) return { t: j.generado || 0, datos: j }
+        if (Array.isArray(j.productos) && j.productos.length) { pistaVersion(j.srv); return { t: j.generado || 0, datos: j } }
       }
     } catch { /* se usa la semilla */ }
   }
@@ -96,23 +123,38 @@ async function cargarEstatica() {
   return { t: 0, datos: { tienda: {}, productos: await r.json() } }
 }
 
+/* Los datos de la tienda y la lista de productos se ordenan por separado:
+   el inventario de la caja trae solo productos, y los datos de la tienda
+   (horario, dirección) siguen llegando del catálogo público. */
+const crudos = { tienda: {}, productos: [], fuenteTienda: '' }
+
 function aplicar(datos, fuente) {
-  if (RANGO[fuente] < RANGO[estadoUI.fuente]) return
-  const tienda = { ...TIENDA, ...(datos.tienda || {}) }
-  const mostrarAgotados = tienda.mostrar_agotados !== 'no'
-  const productos = (datos.productos || [])
-    .filter((p) => p.visible !== false && (mostrarAgotados || p.stock > 0))
+  let cambio = false
+  if (datos.tienda && Object.keys(datos.tienda).length && RANGO[fuente] >= RANGO[crudos.fuenteTienda]) {
+    crudos.tienda = datos.tienda; crudos.fuenteTienda = fuente; cambio = true
+  }
+  if (Array.isArray(datos.productos) && RANGO[fuente] >= RANGO[estadoUI.fuente]) {
+    crudos.productos = datos.productos; estadoUI.fuente = fuente; cambio = true
+  }
+  if (!cambio || !estadoUI.fuente) return
+  const tienda = { ...TIENDA, ...crudos.tienda }
+  // En caja se ven también los agotados: quien vende necesita saberlo.
+  const mostrarAgotados = enCaja || tienda.mostrar_agotados !== 'no'
+  const todos = crudos.productos
     .map((p, i) => ({ ...p, precio: Number(p.precio) || 0, stock: Number(p.stock) || 0,
                       _n: normalizar(`${p.nombre} ${p.descripcion} ${p.categoria}`), _i: i }))
-  const firma = JSON.stringify([tienda, productos.map((p) => [p.id, p.nombre, p.precio, p.stock, p.imagen, p.categoria, p.descripcion])])
-  const primera = !estadoUI.fuente
-  estadoUI.fuente = fuente
+  const productos = todos.filter((p) => p.visible !== false && (mostrarAgotados || p.stock > 0))
+  const firma = JSON.stringify([tienda, todos.map((p) => [p.id, p.nombre, p.precio, p.stock, p.imagen, p.categoria, p.descripcion, p.visible])])
+  const primera = !estadoUI.pintado
+  estadoUI.pintado = true
   if (firma === estadoUI.firma) return
   estadoUI.firma = firma
   const cabeceraAntes = primera ? '' : firmaCabecera()
   estadoUI.tienda = tienda
   estadoUI.productos = productos
-  estadoUI.porId = new Map(productos.map((p) => [p.id, p]))
+  // porId con TODOS: en caja se puede vender un producto oculto del catálogo
+  // (se escanea). El catálogo público ya llega sin ocultos.
+  estadoUI.porId = new Map(todos.map((p) => [p.id, p]))
   if (primera) return pintarTodo()
 
   // Ya había catálogo en pantalla: se actualiza sin que se note. Si cambió
@@ -140,7 +182,7 @@ function firmaCabecera() {
 
 async function cargar() {
   const copia = leerCopia()
-  if (copia) aplicar(copia.datos, 'copia')
+  if (copia) { pistaVersion(copia.srv); aplicar(copia.datos, 'copia') }
   else pintarEsqueleto()
 
   // La foto publicada es CDN (rápida): si no había copia, o es más nueva
@@ -152,7 +194,7 @@ async function cargar() {
   if (hayBackend()) {
     try {
       const vivo = await catalogo()
-      guardarCopia(vivo)
+      guardarCopia({ ...vivo, srv: backend.version })
       aplicar(vivo, 'vivo')
     } catch (err) {
       console.warn('Inventario en vivo no disponible; se muestra la última copia.', err)
@@ -208,6 +250,7 @@ function pintarTodo() {
 
     <div class="tienda-cuerpo">
       <div class="catalogo">
+        <div id="mis-pedidos"></div>
         <div class="barra-filtros">
           <label class="buscador">
             ${icono.buscar}
@@ -243,15 +286,18 @@ function pintarTodo() {
         <footer class="pie">
           <p>${t.tienda_nombre} · ${direccion}</p>
           <p><a href="https://wa.me/${soloDigitos(t.tienda_telefono)}" rel="noopener noreferrer" target="_blank">${icono.whatsapp} +${soloDigitos(t.tienda_telefono)}</a></p>
+          <p class="pie-tienda">${hayCaja && !enCaja
+            ? html`<a href="#caja" data-accion="entrar-caja">Volver al modo caja</a>`
+            : !enCaja ? html`<a href="${BASE}admin.html" rel="nofollow">Acceso tienda</a>` : ''}</p>
         </footer>
       </div>
 
-      <aside class="panel-carrito" id="panel-carrito" aria-label="Tu pedido"></aside>
+      <aside class="panel-carrito" id="panel-carrito" aria-label="${enCaja ? 'Venta en caja' : 'Tu pedido'}"></aside>
     </div>
 
-    <button class="carro-flotante" id="carro-flotante" type="button" aria-label="Ver carrito" hidden>
+    <button class="carro-flotante" id="carro-flotante" type="button" aria-label="${enCaja ? 'Ver la venta' : 'Ver carrito'}" hidden>
       <span class="carro-icono">${icono.carro}<span class="insignia" id="carro-n">0</span></span>
-      <span class="carro-texto">Ver pedido</span>
+      <span class="carro-texto">${enCaja ? 'Ver venta' : 'Ver pedido'}</span>
       <span class="carro-total" id="carro-total"></span>
     </button>
     <button class="volver-arriba" id="volver-arriba" type="button" aria-label="Volver arriba" hidden>
@@ -261,10 +307,12 @@ function pintarTodo() {
     <dialog id="dlg-producto" class="hoja" aria-labelledby="dp-titulo"></dialog>
     <dialog id="dlg-carrito" class="dialogo-lateral hoja" aria-labelledby="dc-titulo"></dialog>
     <dialog id="dlg-horario" class="hoja" aria-labelledby="dh-titulo"></dialog>
+    <dialog id="dlg-listo" class="hoja pedido-listo" aria-labelledby="dl-titulo"></dialog>
   `)
   engancharFiltros()
   pintarProductos()
   pintarResumenCarrito()
+  pintarMisPedidos()
 }
 
 /* ============================================================
@@ -412,19 +460,22 @@ function pintarResumenCarrito(destacar) {
   pintar($('#panel-carrito'), html`
     <div class="pc-cab">
       <span class="carro-icono" id="pc-icono">${icono.carro}${n ? html`<span class="insignia">${n}</span>` : ''}</span>
-      <h2>Tu pedido</h2>
+      <h2>${enCaja ? 'Venta en caja' : 'Tu pedido'}</h2>
       ${n ? html`<button class="btn btn-chico pc-vaciar" type="button" data-accion="vaciar">Vaciar</button>` : ''}
     </div>
+    ${caja?.pedido ? html`<p class="pc-pedido">${icono.ubicacion} Cobrando el pedido <strong>${caja.pedido.pedidoId}</strong>${caja.pedido.cliente ? ` · ${caja.pedido.cliente}` : ''}</p>` : ''}
     ${!n ? html`
       <div class="pc-vacio">
-        <span class="pc-vacio-icono">${icono.carro}</span>
-        <p><strong>Tu carrito está vacío</strong></p>
-        <p>Toca <em>Agregar</em> en un producto y aparecerá aquí.</p>
+        <span class="pc-vacio-icono">${enCaja ? icono.codigo : icono.carro}</span>
+        <p><strong>${enCaja ? 'Ninguna venta en curso' : 'Tu carrito está vacío'}</strong></p>
+        <p>${enCaja ? 'Escanea un código con la pistola o toca Agregar en un producto.' : crudo('Toca <em>Agregar</em> en un producto y aparecerá aquí.')}</p>
       </div>` : html`
       <ul class="lineas pc-lineas">${lineas.map(lineaCarrito)}</ul>
       <div class="pc-pie">
         <p class="total"><span>${n} producto${n === 1 ? '' : 's'}</span><strong>${clp(total)}</strong></p>
-        <button class="btn btn-whatsapp pc-continuar" type="button" data-accion="checkout">${icono.whatsapp} Continuar pedido</button>
+        ${enCaja
+          ? html`<button class="btn btn-primario pc-continuar" type="button" data-accion="checkout">Finalizar venta</button>`
+          : html`<button class="btn btn-primario pc-continuar" type="button" data-accion="checkout">${icono.carro} Continuar pedido</button>`}
       </div>`}`)
 
   const b = $('#carro-flotante')
@@ -495,23 +546,39 @@ function abrirProducto(id) {
   d.showModal()
 }
 
-function abrirCarrito() {
+async function abrirCarrito() {
+  if (enCaja) await cajaLista
   pintarCarrito()
-  $('#dlg-carrito').showModal()
+  const d = $('#dlg-carrito')
+  if (!d.open) d.showModal()
 }
+
+/* ---------- pedido del cliente ----------
+   Retiro en tienda: se RESERVA en el servidor y el cliente recibe un número
+   (P1042) con el que llega a la tienda; ahí se cobra y se descuenta el stock.
+   Despacho: se coordina por WhatsApp, porque el costo del envío depende de
+   la dirección y no se puede cobrar antes de conocerlo. */
 
 const borrador = {}
 function leerDatosCliente() {
   try { return JSON.parse(localStorage.getItem('vm_cliente') || '{}') } catch { return {} }
 }
 
+/* Con un backend anterior a los pedidos (srv < 3) el retiro se coordina por
+   WhatsApp, como antes. Si aún no se sabe la versión se intenta: un backend
+   viejo contesta "Acción no válida" y se pasa a WhatsApp. */
+let sinReservas = false
+const puedeReservar = () => !sinReservas && (!hayBackend() || !backend.version || backend.pedidos)
+
 function pintarCarrito() {
   const d = $('#dlg-carrito')
-  const t = estadoUI.tienda
   const lineas = carrito.lineas(estadoUI.porId)
   const total = lineas.reduce((s, l) => s + l.subtotal, 0)
+  if (enCaja && caja) return caja.pintarCobro(d, lineas, total)
+  const t = estadoUI.tienda
   const previo = { ...leerDatosCliente(), ...borrador }
   const hayDespacho = t.despacho !== 'no', hayRetiro = t.retiro !== 'no'
+  const entrega = !hayRetiro ? 'despacho' : !hayDespacho ? 'retiro' : previo.entrega === 'despacho' ? 'despacho' : 'retiro'
   pintar(d, html`
     <div class="dialogo-cab">
       <h2 id="dc-titulo">Finalizar pedido</h2>
@@ -532,33 +599,53 @@ function pintarCarrito() {
           ${hayDespacho && hayRetiro ? html`
           <fieldset class="entrega">
             <legend>Entrega</legend>
-            <label class="opcion"><input type="radio" name="entrega" value="retiro" ${crudo(previo.entrega !== 'despacho' ? 'checked' : '')}><span>${icono.ubicacion} Retiro en tienda</span></label>
-            <label class="opcion"><input type="radio" name="entrega" value="despacho" ${crudo(previo.entrega === 'despacho' ? 'checked' : '')}><span>${icono.carro} Despacho a domicilio</span></label>
-          </fieldset>` : html`<input type="hidden" name="entrega" value="${hayDespacho ? 'despacho' : 'retiro'}">`}
-          <label class="campo" id="campo-direccion" ${crudo(previo.entrega === 'despacho' || (hayDespacho && !hayRetiro) ? '' : 'hidden')}><span>Dirección de despacho</span>
+            <label class="opcion"><input type="radio" name="entrega" value="retiro" ${crudo(entrega === 'retiro' ? 'checked' : '')}><span>${icono.ubicacion} Retiro en tienda</span></label>
+            <label class="opcion"><input type="radio" name="entrega" value="despacho" ${crudo(entrega === 'despacho' ? 'checked' : '')}><span>${icono.carro} Despacho a domicilio</span></label>
+          </fieldset>` : html`<input type="hidden" name="entrega" value="${entrega}">`}
+          <label class="campo" id="campo-direccion" ${crudo(entrega === 'despacho' ? '' : 'hidden')}><span>Dirección de despacho</span>
             <input class="entrada" name="direccion" maxlength="140" autocomplete="street-address" value="${previo.direccion || ''}"></label>
+          <p class="nota-entrega" id="nota-entrega" aria-live="polite"></p>
           <label class="campo"><span>Comentario (opcional)</span>
             <textarea class="entrada" name="nota" maxlength="300" placeholder="Talla, color, horario de retiro…">${previo.nota || ''}</textarea></label>
           <p class="error-form" id="error-pedido" role="alert"></p>
         </form>
       </div>
       <div class="dialogo-pie">
-        <button class="btn btn-whatsapp btn-ancho" type="submit" form="form-pedido">${icono.whatsapp} Enviar pedido por WhatsApp · ${clp(total)}</button>
+        <button class="btn btn-ancho" id="enviar-pedido" type="submit" form="form-pedido"></button>
       </div>`}
   `)
   const f = $('#form-pedido', d)
-  if (f) {
-    // Lo escrito sobrevive a los repintados (cambiar una cantidad repinta todo).
-    f.addEventListener('input', (e) => { if (e.target.name) borrador[e.target.name] = e.target.value })
-    f.addEventListener('change', (e) => {
-      if (e.target.name) borrador[e.target.name] = e.target.value
-      if (e.target.name === 'entrega') $('#campo-direccion', d).hidden = e.target.value !== 'despacho'
-    })
-    f.addEventListener('submit', enviarPedido)
-  }
+  if (!f) return
+  // Lo escrito sobrevive a los repintados (cambiar una cantidad repinta todo).
+  f.addEventListener('input', (e) => { if (e.target.name) borrador[e.target.name] = e.target.value })
+  f.addEventListener('change', (e) => {
+    if (e.target.name) borrador[e.target.name] = e.target.value
+    if (e.target.name === 'entrega') ponerEntrega(e.target.value, total)
+  })
+  f.addEventListener('submit', enviarPedido)
+  ponerEntrega(entrega, total)
 }
 
-function enviarPedido(e) {
+/* Lo que cambia con la entrega: cómo sigue el pedido y qué hace el botón. */
+function ponerEntrega(entrega, total) {
+  const d = $('#dlg-carrito')
+  const t = estadoUI.tienda
+  const despacho = entrega === 'despacho'
+  const reserva = !despacho && puedeReservar()
+  $('#campo-direccion', d).hidden = !despacho
+  pintar($('#nota-entrega', d), despacho
+    ? html`${icono.whatsapp}<span>El despacho lo coordinamos por WhatsApp. <strong>El envío no está incluido en el total</strong>: su costo depende de la dirección y te lo confirmamos antes de enviar.</span>`
+    : reserva
+      ? html`${icono.ubicacion}<span>Te damos un <strong>número de pedido</strong> al instante. Lo retiras en ${t.tienda_direccion} y pagas en la tienda con efectivo, débito, crédito o transferencia.</span>`
+      : html`${icono.whatsapp}<span>Te confirmamos por WhatsApp cuándo puedes retirarlo en ${t.tienda_direccion}.</span>`)
+  const b = $('#enviar-pedido', d)
+  b.className = `btn btn-ancho ${reserva ? 'btn-primario' : 'btn-whatsapp'}`
+  pintar(b, reserva
+    ? html`${icono.ubicacion} Reservar para retiro · ${clp(total)}`
+    : html`${icono.whatsapp} ${despacho ? 'Coordinar despacho por WhatsApp' : 'Enviar pedido por WhatsApp'} · ${clp(total)}`)
+}
+
+async function enviarPedido(e) {
   e.preventDefault()
   const datos = Object.fromEntries(new FormData(e.target))
   const err = $('#error-pedido')
@@ -574,9 +661,27 @@ function enviarPedido(e) {
     }))
   } catch { /* nada */ }
 
-  const t = estadoUI.tienda
   const lineas = carrito.lineas(estadoUI.porId)
+  if (datos.entrega === 'despacho' || !puedeReservar()) return pedidoPorWhatsApp(datos, lineas)
+  await reservar(datos, lineas, $('#enviar-pedido'))
+}
+
+/* Abre WhatsApp. Debe correr en el mismo clic: después de esperar al
+   servidor, el navegador ya no deja abrir ventanas. Sin 'noopener' en las
+   opciones: con él, window.open devuelve SIEMPRE null y no se podría
+   distinguir una ventana bloqueada. Se corta el opener a mano; si el
+   navegador la bloqueó (null de verdad), se va en esta pestaña. */
+function abrirWhatsApp(texto) {
+  const url = `https://wa.me/${soloDigitos(estadoUI.tienda.tienda_telefono)}?text=${encodeURIComponent(texto)}`
+  const w = window.open(url, '_blank')
+  if (w) w.opener = null
+  return { w, url }
+}
+
+function pedidoPorWhatsApp(datos, lineas) {
+  const t = estadoUI.tienda
   const total = lineas.reduce((s, l) => s + l.subtotal, 0)
+  const despacho = datos.entrega === 'despacho'
   // Texto plano hacia WhatsApp: encodeURIComponent evita que un nombre con
   // "&" o saltos de línea rompa o altere la URL.
   const texto = [
@@ -585,30 +690,166 @@ function enviarPedido(e) {
     '*Pedido*',
     ...lineas.map((l) => `• ${l.cantidad} × ${l.p.nombre} (${l.p.sku}) — ${clp(l.subtotal)}`),
     '',
-    `*Total: ${clp(total)}*`,
+    `*Total: ${clp(total)}*${despacho ? ' (sin el envío)' : ''}`,
     '',
     `Nombre: ${datos.nombre.trim()}`,
     `Celular: ${datos.celular.trim()}`,
-    `Entrega: ${datos.entrega === 'despacho' ? `Despacho a ${datos.direccion.trim()}` : 'Retiro en tienda'}`,
+    `Entrega: ${despacho ? `Despacho a ${datos.direccion.trim()}` : 'Retiro en tienda'}`,
+    despacho ? '¿Cuánto sale el envío a esa dirección?' : '',
     datos.nota?.trim() ? `Comentario: ${datos.nota.trim()}` : '',
   ].filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n')
 
-  const url = `https://wa.me/${soloDigitos(t.tienda_telefono)}?text=${encodeURIComponent(texto)}`
-  // Sin 'noopener' en las opciones: con él, window.open devuelve SIEMPRE null
-  // y no se podría distinguir una ventana bloqueada. Se corta el opener a mano.
-  // Si el navegador la bloqueó (null de verdad), se va en esta pestaña.
-  const w = window.open(url, '_blank')
-  if (w) w.opener = null
+  const { w, url } = abrirWhatsApp(texto)
   $('#dlg-carrito').close()
   celebrar({
     titulo: '¡Tu pedido está listo!',
-    detalle: 'Se abrió WhatsApp con el detalle. Solo falta tocar Enviar; te responderemos por ahí.',
+    detalle: despacho
+      ? 'Se abrió WhatsApp con el detalle. Toca Enviar y te diremos el costo del envío a tu dirección.'
+      : 'Se abrió WhatsApp con el detalle. Solo falta tocar Enviar; te responderemos por ahí.',
     acciones: [
       { texto: 'Seguir mirando', primaria: true },
       { texto: 'Vaciar el carrito', fn: () => { carrito.vaciar(); $$('.producto').forEach((li) => refrescarControles(li.dataset.id)); pintarResumenCarrito(); aviso('Carrito vaciado', 'info') } },
     ],
   })
   if (!w) location.href = url
+}
+
+/* La misma clave de idempotencia mientras el pedido no cambie: si la
+   respuesta se pierde (Apps Script a veces ejecuta y devuelve un 404) y el
+   cliente vuelve a tocar Reservar, recibe el MISMO número en vez de dejar
+   dos pedidos. */
+let reserva = null
+
+async function reservar(datos, lineas, btn) {
+  const err = $('#error-pedido')
+  const cuerpo = {
+    nombre: datos.nombre.trim(), celular: datos.celular.trim(), nota: (datos.nota || '').trim(),
+    items: lineas.map((l) => ({ id: l.p.id, cantidad: l.cantidad })),
+  }
+  const firma = JSON.stringify(cuerpo)
+  if (reserva?.firma !== firma) reserva = { firma, idem: idAleatorio() }
+  try {
+    const r = await conBoton(btn, () => llamarTienda('crearPedido', cuerpo, { idem: reserva.idem }))
+    if (!r) return
+    reserva = null
+    const p = { pedidoId: r.pedidoId, total: r.total, nombre: cuerpo.nombre, fecha: Date.now() }
+    recordarPedido(p)
+    carrito.vaciar()
+    $$('.producto').forEach((li) => refrescarControles(li.dataset.id))
+    pintarResumenCarrito()
+    $('#dlg-carrito').close()
+    mostrarPedido(p, true)
+  } catch (x) {
+    if (x.message === 'Acción no válida') {
+      // Backend anterior a los pedidos: el retiro sigue por WhatsApp.
+      sinReservas = true
+      ponerEntrega('retiro', lineas.reduce((s, l) => s + l.subtotal, 0))
+      err.textContent = 'La reserva en línea no está disponible en este momento. Envía tu pedido por WhatsApp y te confirmamos el retiro.'
+      return
+    }
+    err.textContent = x.red
+      ? 'No pudimos confirmar tu reserva porque la conexión falló. Toca Reservar otra vez: si ya había quedado, verás el mismo número de pedido.'
+      : x.message
+  }
+}
+
+/* Los pedidos reservados desde ESTE navegador, para volver a ver el número.
+   Nada sensible: número, total y el nombre que escribió el propio cliente. */
+const CLAVE_MIS = 'vm_mis_pedidos'
+const VIGENCIA_MS = 7 * 24 * 60 * 60 * 1000
+
+function misPedidos() {
+  try {
+    const l = JSON.parse(localStorage.getItem(CLAVE_MIS) || '[]')
+    return Array.isArray(l) ? l.filter((p) => p && /^P\d+$/.test(p.pedidoId) && Date.now() - p.fecha < VIGENCIA_MS) : []
+  } catch { return [] }
+}
+function guardarMisPedidos(l) { try { localStorage.setItem(CLAVE_MIS, JSON.stringify(l)) } catch { /* nada */ } }
+function recordarPedido(p) { guardarMisPedidos([p, ...misPedidos().filter((x) => x.pedidoId !== p.pedidoId)].slice(0, 5)); pintarMisPedidos() }
+function olvidarPedido(id) { guardarMisPedidos(misPedidos().filter((x) => x.pedidoId !== id)); pintarMisPedidos() }
+
+function pintarMisPedidos() {
+  const caja = $('#mis-pedidos')
+  if (!caja) return
+  const l = enCaja ? [] : misPedidos()
+  pintar(caja, !l.length ? '' : html`<div class="mis-pedidos">${l.map((p) => html`
+    <p class="mi-pedido" data-pedido="${p.pedidoId}">
+      ${icono.ubicacion}<span>Tienes el pedido <strong>${p.pedidoId}</strong> reservado para retiro</span>
+      <button class="btn btn-chico btn-borde" type="button" data-accion="ver-pedido">Ver</button>
+      <button class="btn btn-chico btn-icono" type="button" data-accion="olvidar-pedido" aria-label="Ocultar el aviso del pedido ${p.pedidoId}">${icono.cerrar}</button>
+    </p>`)}</div>`)
+}
+
+function mostrarPedido(p, nuevo = false) {
+  const d = $('#dlg-listo')
+  const t = estadoUI.tienda
+  const direccion = `${t.tienda_direccion}${t.tienda_ciudad ? `, ${t.tienda_ciudad}` : ''}`
+  pintar(d, html`
+    <div class="dialogo-cab">
+      <h2 id="dl-titulo">${nuevo ? '¡Pedido reservado!' : 'Tu pedido para retiro'}</h2>
+      <button class="btn btn-icono" type="button" data-cerrar aria-label="Cerrar">${icono.cerrar}</button>
+    </div>
+    <div class="dialogo-cuerpo listo-cuerpo">
+      ${nuevo ? html`<span class="listo-marca" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.2 4.2L19 7"/></svg></span>` : ''}
+      <p class="listo-etiqueta">Tu número de pedido</p>
+      <p class="pedido-numero">${p.pedidoId}</p>
+      <ol class="listo-pasos">
+        <li>Ven a retirarlo a <strong>${direccion}</strong>. <button class="enlace-horario" type="button" data-accion="horario">${icono.reloj} Ver horario</button></li>
+        <li>En caja, di o muestra este número${p.nombre ? ` (a nombre de ${p.nombre})` : ''}.</li>
+        <li>Pagas al retirar: efectivo, débito, crédito o transferencia.</li>
+      </ol>
+      <p class="total"><span>Total estimado</span><strong>${clp(p.total)}</strong></p>
+      <p class="listo-ayuda">El precio y la disponibilidad se confirman al retirar. Te conviene guardar una captura de esta pantalla.</p>
+    </div>
+    <div class="dialogo-pie">
+      <button class="btn btn-whatsapp" type="button" data-accion="avisar-pedido">${icono.whatsapp} Avisar por WhatsApp</button>
+      <button class="btn btn-primario" type="button" data-cerrar>Listo</button>
+    </div>`)
+  d.dataset.pedido = p.pedidoId
+  d.showModal()
+  if (nuevo) navigator.vibrate?.(40)
+}
+
+/* Lo que caja.js necesita del catálogo. */
+function ctxCaja() {
+  return {
+    perfil: PERFIL,
+    estadoUI,
+    aplicar,
+    lineaCarrito,
+    agregar: agregarProducto,
+    abrirCarrito,
+    refrescar() {
+      $$('.producto').forEach((li) => refrescarControles(li.dataset.id))
+      pintarResumenCarrito()
+      if ($('#dlg-carrito')?.open) pintarCarrito()
+    },
+    buscar(q) {
+      estadoUI.q = q
+      estadoUI.mostrados = TANDA
+      if ($('#q')) { $('#q').value = q; pintarProductos() }
+    },
+    salir() {
+      try { sessionStorage.setItem(CAJA_APAGADA, '1') } catch { /* nada */ }
+      location.reload()
+    },
+  }
+}
+
+/* Suma una unidad al carrito (la usa el escáner de la caja). */
+function agregarProducto(id) {
+  const p = estadoUI.porId.get(id)
+  if (!p) return false
+  const n = carrito.cantidad(id) + 1
+  if (n > p.stock) {
+    aviso(p.stock <= 0 ? `${p.nombre}: sin stock` : `Solo quedan ${p.stock} unidades de ${p.nombre}`, 'error')
+    return false
+  }
+  carrito.poner(id, n, p.stock)
+  refrescarControles(id)
+  pintarResumenCarrito(id)
+  if ($('#dlg-carrito')?.open) pintarCarrito()
+  return true
 }
 
 function abrirHorario() {
@@ -675,9 +916,28 @@ document.addEventListener('click', (e) => {
   const accion = b.dataset.accion
   if (accion === 'horario') return abrirHorario()
   if (accion === 'checkout') return abrirCarrito()
+  if (accion === 'ver-pedido' || accion === 'olvidar-pedido') {
+    const pid = b.closest('[data-pedido]').dataset.pedido
+    if (accion === 'olvidar-pedido') return olvidarPedido(pid)
+    const p = misPedidos().find((x) => x.pedidoId === pid)
+    return p && mostrarPedido(p)
+  }
+  if (accion === 'avisar-pedido') {
+    const p = misPedidos().find((x) => x.pedidoId === $('#dlg-listo').dataset.pedido)
+    if (!p) return
+    const { w, url } = abrirWhatsApp(`Hola! Reservé el pedido ${p.pedidoId} para retiro en tienda${p.nombre ? `, a nombre de ${p.nombre}` : ''}. Total estimado: ${clp(p.total)}.`)
+    if (!w) location.href = url
+    return
+  }
+  if (accion === 'entrar-caja') {
+    e.preventDefault()
+    try { sessionStorage.removeItem(CAJA_APAGADA) } catch { /* nada */ }
+    return location.reload()
+  }
   if (accion === 'vaciar') {
-    if (!confirm('¿Vaciar el carrito?')) return
+    if (!confirm(enCaja ? '¿Vaciar la venta en curso?' : '¿Vaciar el carrito?')) return
     desvanecer($('#panel-carrito .pc-lineas')).then(() => {
+      caja?.olvidarPedido()
       carrito.vaciar()
       if ($('#dlg-carrito').open) pintarCarrito()
       $$('.producto').forEach((li) => refrescarControles(li.dataset.id))
@@ -710,7 +970,7 @@ document.addEventListener('click', (e) => {
       return
     }
     actualizar()
-    if (antes === 0) aviso(`${p.nombre} agregado a tu pedido`)
+    if (antes === 0) aviso(`${p.nombre} agregado a ${enCaja ? 'la venta' : 'tu pedido'}`)
     // Vuela solo al agregar desde el catálogo o el detalle, no desde el carrito.
     if (accion === 'mas' && !b.closest('.lineas')) volarAlCarrito(b.closest('.producto, .detalle'))
   }

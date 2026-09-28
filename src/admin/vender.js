@@ -140,7 +140,8 @@ export default function vender(el) {
     const total = lineas.reduce((s, l) => s + l.cantidad * l.p.precio, 0)
     const unidades = lineas.reduce((s, l) => s + l.cantidad, 0)
     const venta = st.modo === 'venta'
-    const medio = $('#medio', el)?.value
+    // Repintar no debe perder lo ya elegido o escrito en el cobro.
+    const previo = Object.fromEntries(['medio', 'cliente', 'contacto', 'comprobante'].map((k) => [k, $(`#${k}`, el)?.value]))
     pintar($('#ticket', el), !lineas.length ? vacioTicket(venta) : html`
       <ul class="ticket">
         ${lineas.map((l) => html`
@@ -165,6 +166,14 @@ export default function vender(el) {
               <select class="entrada" id="medio">${MEDIOS.map(([v, t]) => html`<option value="${v}">${t}</option>`)}</select></label>
             ${esAdmin() ? html`<label class="campo"><span>Descuento ($)</span>
               <input class="entrada" id="descuento" type="number" inputmode="numeric" min="0" step="100" value="0"></label>` : ''}
+            <label class="campo"><span>N° de comprobante (opcional)</span>
+              <input class="entrada" id="comprobante" maxlength="40" autocomplete="off" placeholder="Boleta, voucher u operación"></label>
+          </div>
+          <div class="cobro-fila">
+            <label class="campo"><span>Cliente (opcional)</span>
+              <input class="entrada" id="cliente" maxlength="60" autocomplete="off"></label>
+            <label class="campo"><span>Celular o correo (opcional)</span>
+              <input class="entrada" id="contacto" maxlength="60" autocomplete="off"></label>
           </div>
           <p class="cobro-total"><span>${unidades} unidad${unidades === 1 ? '' : 'es'}</span><strong id="total-final">${clp(total)}</strong></p>
           <div class="cobro-botones">
@@ -178,8 +187,7 @@ export default function vender(el) {
             <button class="btn btn-primario btn-grande" type="button" id="registrar-ingreso">Registrar ingreso</button>
           </div>`}
       </div>`)
-    // Repintar no debe perder el medio de pago elegido.
-    if (medio && $('#medio', el)) $('#medio', el).value = medio
+    Object.entries(previo).forEach(([k, v]) => { if (v && $(`#${k}`, el)) $(`#${k}`, el).value = v })
     const caja = $('#ticket-error', el)
     if (caja) {
       panelError(caja, { compacto: true, titulo: 'No se pudo cargar el inventario', detalle: inventario.error?.message || '',
@@ -195,19 +203,23 @@ export default function vender(el) {
     if (descuento < 0 || total < 0) { sacudir($('#descuento', el)); return aviso('Descuento no válido', 'error') }
     if (!confirm(`¿Registrar la venta por ${clp(total)}?`)) return
     const medio = $('#medio', el).value
+    const cliente = $('#cliente', el).value.trim()
     st.ocupado = true
     try {
       const r = await conBoton($('#cobrar', el), () => llamar('vender', {
         items: lineas.map((l) => ({ id: l.p.id, cantidad: l.cantidad })),
         medioPago: medio,
         descuento,
+        cliente,
+        contacto: $('#contacto', el).value.trim(),
+        comprobante: $('#comprobante', el).value.trim(),
       }))
       r.stock.forEach((s) => inventario.fijarStock(s.id, s.stock))
       st.lineas.clear()
       pintarTicket()
-      agregarVentaLocal({ ventaId: r.ventaId, fecha: new Date().toISOString(), usuario: sesion.usuario, medio, anulada: false,
+      agregarVentaLocal({ ventaId: r.ventaId, fecha: new Date().toISOString(), usuario: sesion.usuario, medio, anulada: false, cliente,
         total: r.total, items: lineas.map((l) => ({ nombre: l.p.nombre, cantidad: l.cantidad })) })
-      await celebrar({ titulo: '¡Venta registrada!', detalle: `${clp(r.total)} · ${NOMBRE_MEDIO[medio] || medio} · ${r.ventaId}` })
+      await celebrar({ titulo: '¡Gracias por la compra!', detalle: [clp(r.total), NOMBRE_MEDIO[medio] || medio, cliente, r.ventaId].filter(Boolean).join(' · ') })
     } catch (err) {
       if (err.incierto) {
         // No se sabe si quedó: se deja el ticket y se pide mirar antes de repetir.
@@ -287,6 +299,7 @@ export default function vender(el) {
               <strong>${clp(v.total)}</strong>
             </div>
             <p class="venta-items">${v.items.map((i) => `${i.cantidad}× ${i.nombre}`).join(', ')}</p>
+            ${v.cliente || v.pedidoId ? html`<p class="venta-cliente">${[v.cliente, v.pedidoId && `pedido ${v.pedidoId}`].filter(Boolean).join(' · ')}</p>` : ''}
             <div class="venta-pie">
               <span class="etiqueta">${v.ventaId}</span>
               ${v.anulada ? html`<span class="etiqueta etiqueta-error">Anulada</span>`

@@ -42,7 +42,7 @@ export const onSesionCaducada = (fn) => { alCaducar = fn }
 
 /* Lecturas: repetirlas no cambia nada. Todo lo demás es escritura. */
 const LECTURAS = new Set(['login', 'logout', 'sesion', 'productos', 'buscarCodigo', 'ventasDelDia',
-                          'reporte', 'movimientos', 'usuarios', 'config'])
+                          'reporte', 'movimientos', 'usuarios', 'config', 'pedidos'])
 const ESPERA_LECTURA = 45_000
 const ESPERA_ESCRITURA = 90_000   // abortar no detiene al servidor: se espera más
 const INTENTOS_LECTURA = 3
@@ -58,7 +58,14 @@ export const backend = {
   get version() { return srv },
   get reintentaEscrituras() { return srv >= 2 },
   get ajusteEnLote() { return srv >= 2 },
+  /* Pedidos para retiro y datos del cliente en la venta. */
+  get pedidos() { return srv >= 3 },
 }
+
+/* La foto publicada del catálogo (data/vivo.json) trae la versión que tenía
+   el backend al publicarse: sirve de pista mientras no contesta en vivo, y
+   la respuesta real siempre la reemplaza. */
+export function pistaVersion(v) { if (!srv && Number(v) > 0) srv = Number(v) }
 
 /* ---------- actividad de red (para el indicador del panel) ---------- */
 
@@ -69,7 +76,7 @@ const emitir = (e) => oyentes.forEach((fn) => { try { fn({ ...e, enVuelo }) } ca
 
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms))
 
-function idAleatorio() {
+export function idAleatorio() {
   const b = crypto.getRandomValues(new Uint8Array(18))
   return btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
@@ -100,10 +107,15 @@ async function pedir(url, opciones, ms) {
   }
 }
 
-export async function llamar(accion, datos = {}) {
+/* `idem`: clave fija para una escritura que la PERSONA puede reintentar
+   (el cliente que pulsa otra vez "Reservar" tras un error de red): con la
+   misma clave, el servidor devuelve el mismo pedido en vez de crear otro.
+   Sin ella, cada llamada lleva una clave nueva (los reintentos automáticos
+   de esta función reutilizan la suya). */
+export async function llamar(accion, datos = {}, { idem } = {}) {
   if (!API_URL) throw new ErrorApi('El backend no está configurado (src/config.js)')
   const escritura = !LECTURAS.has(accion)
-  const cuerpo = JSON.stringify({ ...datos, accion, token: token.get(), ...(escritura && { idem: idAleatorio() }) })
+  const cuerpo = JSON.stringify({ ...datos, accion, token: token.get(), ...(escritura && { idem: idem || idAleatorio() }) })
   const opciones = { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: cuerpo }
   const max = escritura ? INTENTOS_ESCRITURA : INTENTOS_LECTURA
 

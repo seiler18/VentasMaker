@@ -13,15 +13,24 @@ CSP activa. Segunda revisión, del repositorio entero e historial incluido, el
 |---|---|
 | Stock y ventas (la hoja) | Alguien de internet que llama a la API directamente |
 | Cuentas del panel | Fuerza bruta, token robado, empleado al que se le quitó el acceso |
-| Datos de clientes (nombre, celular, dirección) | No se guardan en el servidor: van por WhatsApp. En el navegador del cliente solo queda lo suyo |
+| Datos de clientes (nombre, celular) | Desde la v3 se guardan en la hoja: el pedido para retiro (hoja *Pedidos*) y el cliente que la caja anota en la venta. Solo los lee alguien con sesión (`pedidos`, admin y vendedor) o con acceso a la planilla. La dirección de despacho sigue yendo solo por WhatsApp. En el navegador del cliente queda lo suyo y el número de su pedido |
+| La hoja *Pedidos* | Alguien de internet que la llena de pedidos falsos (es la única escritura sin sesión) |
 | Costos y márgenes | Un vendedor curioso |
 | Disponibilidad de la caja | Saturar el Apps Script (cuota de ejecuciones del dueño) |
 
 ## Controles
 
 **Backend (`backend/Code.gs`)**
-- Toda acción excepto `login` y el catálogo exige sesión; cada acción declara sus
-  roles en `PERMISOS` (lista blanca: lo que no está no existe).
+- Toda acción excepto `login`, `crearPedido` y el catálogo exige sesión; cada
+  acción declara sus roles en `PERMISOS` (lista blanca: lo que no está no existe).
+- `crearPedido` (pedido para retiro, sin sesión): **no toca el stock** (se
+  descuenta al cobrarlo con `vender`), así que un pedido falso no deja la tienda
+  sin inventario. Frenos antes de leer la hoja: 10 pedidos/minuto en total y 5
+  por celular cada hora; tope de 300 pendientes. El cliente solo manda id y
+  cantidad de productos **visibles**; nombre, precio y total los pone el
+  servidor. Textos por `texto_()` y `celda_()`. Idempotente bajo el usuario
+  `publico` (la clave `idem` es aleatoria de 144 bits: no se adivina la ajena).
+  El Registro guarda solo los 4 últimos dígitos del celular.
 - Claves: HMAC-SHA256 × 2000 con sal por usuario y un «pimiento» en las
   Propiedades del script (no en la hoja). Comparación en tiempo constante. Mínimo
   10 caracteres con letras y números.
@@ -87,6 +96,7 @@ Pages. `npm ci --ignore-scripts`, `npm audit`, acciones fijadas por SHA.
 | L6 | Baja | `cambiarClave` no limitaba los intentos de «clave actual»: con un token robado se podía adivinar la clave por fuerza bruta y quedarse con la cuenta pasadas las 6 h de la sesión | **Corregido** (2026-09-26), redesplegado en producción el mismo día |
 | L7 | Baja | El freno global (20 logins/minuto) lo puede agotar cualquiera sin cuenta: mientras dure el ataque, nadie inicia sesión | Aceptado: Apps Script no entrega la IP del cliente, así que no hay freno por origen; sin el global, el mismo ataque agota la cuota del dueño y tumba también catálogo y caja. Las sesiones abiertas siguen |
 | I2 | Info | `vender` buscaba los productos en un objeto con prototipo: un id `__proto__` pasaba como «existe» (sin efecto real: la venta salía vacía o fallaba) | **Corregido** (2026-09-26), redesplegado con L6 |
+| L8 | Baja | Pedidos para retiro (v3, 2026-09-28): cualquiera puede reservar con un nombre y celular inventados, y como en L7 el freno global de 10/minuto lo puede agotar un atacante | Aceptado: un pedido no mueve stock ni dinero; frenos por minuto y por celular, tope de 300 pendientes, y la tienda los cancela desde la pestaña Pedidos. Si el freno se agota, el cliente ve «intenta en un minuto o escríbenos por WhatsApp» |
 
 ## Lo que queda en manos de la dueña (importante)
 

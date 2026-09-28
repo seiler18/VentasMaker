@@ -1,13 +1,17 @@
 /* Carrito del visitante. Vive en localStorage porque es una comodidad de
    quien navega (que no se pierda al recargar), no un dato del negocio: el
-   pedido real se cierra por WhatsApp y el stock se descuenta cuando la venta
-   se registra en el panel.
+   pedido real se reserva en el servidor (retiro) o se cierra por WhatsApp
+   (despacho), y el stock se descuenta cuando la venta se cobra en la tienda.
+
+   En modo caja (la tienda vendiendo desde el catálogo) se usa OTRA clave:
+   la venta en curso del mesón nunca se mezcla con el carrito de alguien
+   que usó ese mismo equipo para mirar el catálogo.
 
    Solo se guardan id y cantidad. Precio, nombre y stock se leen SIEMPRE del
    catálogo recién cargado: un carrito viejo no puede arrastrar un precio que
    ya cambió (ni uno editado a mano en el almacenamiento). */
 
-const CLAVE = 'vm_carrito'
+let CLAVE = 'vm_carrito'
 let items = leer()
 const oyentes = new Set()
 
@@ -25,6 +29,7 @@ function guardar() {
 
 export const carrito = {
   suscribir: (fn) => oyentes.add(fn),
+  usar(clave) { CLAVE = clave; items = leer() },
   cantidad: (id) => items[id] || 0,
 
   poner(id, n, max = Infinity) {

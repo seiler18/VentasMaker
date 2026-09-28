@@ -379,6 +379,56 @@
 .opcion input:focus-visible + span { outline: 3px solid var(--borde-vivo); outline-offset: 2px; }
 .error-form { margin: 0; color: var(--error); font-size: var(--txt-menudo); min-height: 1em; }
 
+/* Cómo sigue el pedido según la entrega (retiro: número; despacho: WhatsApp y costo aparte). */
+.nota-entrega {
+  display: flex; gap: 10px; align-items: flex-start; margin: 0;
+  padding: 12px 14px; border-radius: var(--radio-sm);
+  background: var(--primario-tenue); color: var(--texto); font-size: var(--txt-menudo);
+}
+.nota-entrega .icono { color: var(--primario); margin-top: 2px; }
+.nota-entrega:empty { display: none; }
+
+/* ----- Pedido reservado: el número que el cliente muestra en caja ----- */
+.pedido-listo { width: min(100% - 24px, 480px); }
+.listo-cuerpo { justify-items: center; text-align: center; }
+.listo-marca {
+  display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%;
+  background: var(--ok-tenue); color: var(--ok);
+  animation: pop var(--lento) var(--curva-rebote);
+}
+.listo-marca svg { width: 34px; height: 34px; }
+.listo-etiqueta { margin: 0; color: var(--texto-tenue); font-size: var(--txt-menudo); font-weight: 600; text-transform: uppercase; letter-spacing: var(--tracking-etiqueta); }
+.pedido-numero {
+  margin: 0; padding: 6px 22px; border: 2px dashed var(--borde-vivo); border-radius: var(--radio);
+  font-family: var(--fuente-titulos); font-size: var(--txt-numero); font-weight: 700; line-height: var(--interlinea-titulo);
+  color: var(--primario); letter-spacing: var(--tracking-etiqueta); font-variant-numeric: tabular-nums;
+}
+.listo-pasos { margin: 0; padding-left: 22px; display: grid; gap: 8px; text-align: left; justify-self: stretch; }
+.listo-pasos .enlace-horario { padding: 0; }
+.listo-cuerpo .total { justify-self: stretch; }
+.listo-ayuda { margin: 0; color: var(--texto-tenue); font-size: var(--txt-menudo); }
+
+/* Aviso arriba del catálogo: "Tienes el pedido P1042 reservado". */
+.mis-pedidos { display: grid; gap: 8px; padding-top: 14px; }
+.mi-pedido {
+  display: flex; align-items: center; gap: 10px; margin: 0;
+  padding: 8px 8px 8px 14px; border-radius: var(--radio-sm);
+  background: var(--ok-tenue); color: var(--texto); font-size: var(--txt-menudo);
+}
+.mi-pedido > .icono { color: var(--ok); }
+.mi-pedido > span { flex: 1; min-width: 0; }
+.mi-pedido .btn-icono { background: none; }
+
+/* En caja: a qué pedido corresponde la venta en curso. */
+.pc-pedido {
+  display: flex; gap: 8px; align-items: center; margin: 0; padding: 10px 18px;
+  background: var(--aviso-tenue); font-size: var(--txt-menudo);
+}
+.pc-pedido .icono { color: var(--aviso); }
+
+.pie-tienda { margin-top: 10px; }
+.pie-tienda a { font-weight: 500; color: var(--texto-tenue); }
+
 .tabla-horario { width: 100%; border-collapse: collapse; }
 .tabla-horario th, .tabla-horario td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--borde); }
 .tabla-horario tr.hoy { background: var(--primario-tenue); font-weight: 700; color: var(--primario); }

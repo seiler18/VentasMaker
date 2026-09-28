@@ -25,7 +25,7 @@
 }
 .pestanas a[aria-current="true"] { background: var(--primario-tenue-2); color: var(--primario); }
 @media (hover: hover) { .pestanas a:hover:not([aria-current="true"]) { background: var(--surface-2); } }
-.barra-usuario { display: flex; align-items: center; gap: 8px; }
+.barra-usuario { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .quien { font-size: var(--txt-menudo); color: var(--texto-tenue); }
 .contenido { width: min(100% - 32px, 1320px); margin: 20px auto 60px; }
 
@@ -105,12 +105,37 @@
 .venta.anulada strong { text-decoration: line-through; }
 .venta-cab, .venta-pie { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .venta-items { margin: 0; color: var(--texto-tenue); }
+.venta-cliente { margin: 0; font-weight: 600; }
 
 .dlg-camara { width: min(100% - 24px, 520px); }
 .camara { position: relative; background: var(--texto-fuerte); aspect-ratio: 4 / 3; overflow: hidden; }
 .camara video { width: 100%; height: 100%; object-fit: cover; }
 .mira { position: absolute; inset: 30% 12%; border: 3px solid var(--acento); border-radius: var(--radio-sm); box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35); }
 .camara-ultimo { margin: 0; padding: 14px 20px; font-weight: 600; text-align: center; }
+
+/* ----- Pedidos del catálogo ----- */
+.pedidos-vista { display: grid; gap: 14px; }
+.pedidos-barra { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.pedidos-buscar { flex: 1 1 240px; }
+.pedidos-conteo { margin: 0 0 10px; color: var(--texto-tenue); font-size: var(--txt-menudo); font-weight: 600; }
+.pedidos-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.pedido-ficha {
+  display: grid; gap: 8px; align-content: start; padding: 14px 16px;
+  background: var(--surface); border: 1px solid var(--borde); border-radius: var(--radio);
+}
+.pedido-ficha.pendiente { border-color: var(--borde-vivo); }
+.pedido-ficha.cancelado, .pedido-ficha.completado { opacity: 0.75; }
+.pf-cab { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pf-numero { font-family: var(--fuente-titulos); font-size: var(--txt-t3); color: var(--primario); }
+.pf-fecha { margin-left: auto; color: var(--texto-tenue); font-size: var(--txt-micro); }
+.pf-cliente { margin: 0; font-weight: 600; }
+.pf-cliente a { display: inline-flex; gap: 4px; align-items: center; font-weight: 500; }
+.pf-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: var(--txt-menudo); color: var(--texto-tenue); }
+.pf-items li { display: flex; justify-content: space-between; gap: 10px; }
+.pf-nota { margin: 0; font-size: var(--txt-menudo); font-style: italic; }
+.pf-pie { display: flex; gap: 8px; align-items: center; justify-content: flex-end; padding-top: 8px; border-top: 1px solid var(--borde); }
+.pf-total { margin-right: auto; font-size: var(--txt-guia); }
+.pf-atendido { color: var(--texto-tenue); font-size: var(--txt-micro); }
 
 /* ----- Inventario ----- */
 .inv, .usr, .etq { display: grid; gap: 14px; }
@@ -218,6 +243,9 @@
   .barra { gap: 8px; }
   .pestanas { order: 3; flex-basis: 100%; }
   .barra-usuario { margin-left: auto; }
+  /* En el teléfono, solo el icono: el texto empujaba «Salir» fuera de la pantalla. */
+  .ir-catalogo { padding: 0; width: 36px; }
+  .ir-catalogo span { display: none; }
 }
 
 /* ----- Esperas y respuestas (efectos.css trae lo común) ----- */

@@ -21,7 +21,7 @@ class Hoja {
     return {
       getValues() {
         const out = []
-        for (let i = 0; i < nr; i++) { const fila = []; for (let j = 0; j < nc; j++) fila.push(h.d[r - 1 + i]?.[c - 1 + j] ?? ''); out.push(fila) }
+        for (let i = 0; i < nr; i++) { const fila = []; for (let j = 0; j < nc; j++) { const x = h.d[r - 1 + i]?.[c - 1 + j] ?? ''; fila.push(x?.formulaNeutralizada ?? x) }; out.push(fila) }
         return out
       },
       setValues(v) { v.forEach((fila, i) => fila.forEach((x, j) => h.set(r + i, c + j, x))); return this },
@@ -176,8 +176,72 @@ esperar('lote con producto repetido rechazado', !post({ accion: 'ajustarStock', 
 esperar('lote con id heredado rechazado', !post({ accion: 'ajustarStock', token: tok, items: [{ id: '__proto__', delta: 1 }] }).ok)
 esperar('lote vacío rechazado', !post({ accion: 'ajustarStock', token: tok, items: [] }).ok)
 
+// pedidos del catálogo (retiro en tienda)
+const pub = (o) => post({ accion: 'crearPedido', ...o })
+const olvidarFrenos = () => [...cache.keys()].filter((k) => /^(pedidos_|pedcel_)/.test(k)).forEach((k) => cache.delete(k))
+const pedidoDe = (id) => post({ accion: 'pedidos', token: tok, id }).pedido
+delete hojas.Pedidos   // planilla instalada antes de que existieran los pedidos
+r = post({ accion: 'pedidos', token: tok })
+esperar('pedidos sin hoja: lista vacía y no la crea al leer', r.ok && r.pedidos.length === 0 && !hojas.Pedidos, JSON.stringify(r))
+const stockPed = stockDe('p1')
+r = pub({ nombre: '=HYPERLINK("x")', celular: '+56 9 1234 5678', nota: 'talla M', items: [{ id: 'p1', cantidad: 1, precio: 1 }, { id: 'p1', cantidad: 1 }] })
+esperar('crearPedido sin sesión devuelve número y total del servidor', r.ok && /^P\d+$/.test(r.pedidoId) && r.total === 20000, JSON.stringify(r))
+const ped1 = r.pedidoId
+esperar('crearPedido crea la hoja Pedidos sola', !!hojas.Pedidos)
+esperar('un pedido no descuenta stock', stockDe('p1') === stockPed)
+esperar('nombre del cliente con fórmula neutralizado', typeof hojas.Pedidos.d[1][4] === 'object')
+esperar('pedido de producto oculto rechazado', !pub({ nombre: 'A', celular: '912345678', items: [{ id: 'p3', cantidad: 1 }] }).ok)
+esperar('pedido con más que el stock rechazado', /Solo quedan/.test(pub({ nombre: 'A', celular: '912345678', items: [{ id: 'p1', cantidad: 999 }] }).error || ''))
+esperar('pedido con id heredado rechazado', !pub({ nombre: 'A', celular: '912345678', items: [{ id: '__proto__', cantidad: 1 }] }).ok)
+esperar('pedido con celular inválido rechazado', !pub({ nombre: 'A', celular: '12', items: [{ id: 'p2', cantidad: 1 }] }).ok)
+esperar('pedido vacío rechazado', !pub({ nombre: 'A', celular: '912345678', items: [] }).ok)
+olvidarFrenos()
+const idemPed = 'pedido-idem-0123456789'
+const pa = pub({ idem: idemPed, nombre: 'Beto', celular: '987654321', items: [{ id: 'p2', cantidad: 1 }] })
+const pb = pub({ idem: idemPed, nombre: 'Beto', celular: '987654321', items: [{ id: 'p2', cantidad: 1 }] })
+esperar('reintento del pedido con la misma clave no crea otro', pa.ok && pb.ok && pb.pedidoId === pa.pedidoId && pb.repetida, JSON.stringify([pa, pb]))
+esperar('números de pedido correlativos', Number(pa.pedidoId.slice(1)) === Number(ped1.slice(1)) + 1)
+esperar('pedidos requiere sesión', post({ accion: 'pedidos' }).sesion === false)
+esperar('buscar pedido acepta el número sin la P', pedidoDe(' #' + ped1.slice(1))?.pedidoId === ped1)
+esperar('el pedido guarda líneas agrupadas y datos del cliente', (() => {
+  const p = pedidoDe(ped1)
+  return p.items.length === 1 && p.items[0].cantidad === 2 && p.celular === '56912345678' && p.nota === 'talla M' && p.estado === 'pendiente'
+})())
+esperar('la lista trae los pendientes', post({ accion: 'pedidos', token: tok }).pedidos.filter((p) => p.estado === 'pendiente').length === 2)
+r = post({ accion: 'vender', token: tok, pedidoId: ped1.slice(1), items: [{ id: 'p1', cantidad: 2 }], medioPago: 'debito', comprobante: '4411' })
+esperar('cobrar el pedido registra la venta y descuenta', r.ok && r.pedidoId === ped1 && stockDe('p1') === stockPed - 2, JSON.stringify(r))
+const ventaPed = r.ventaId
+esperar('la venta del pedido guarda cliente, contacto, comprobante y pedido', (() => {
+  const cab = hojas.Ventas.d[0], fila = hojas.Ventas.d.find((f) => f[0] === ventaPed)
+  const v = (c) => fila[cab.indexOf(c)]
+  return typeof v('cliente') === 'object' && v('contacto') === '56912345678' && v('comprobante') === '4411' && v('pedido_id') === ped1 && v('canal') === 'web'
+})())
+esperar('el pedido queda completado con su venta', (() => { const p = pedidoDe(ped1); return p.estado === 'completado' && p.ventaId === ventaPed && p.atendidoPor === 'admin' })())
+esperar('cobrar dos veces el mismo pedido falla', /ya está completado/.test(post({ accion: 'vender', token: tok, pedidoId: ped1, items: [{ id: 'p1', cantidad: 1 }] }).error || ''))
+esperar('cobrar un pedido inexistente falla sin vender', /No existe/.test(post({ accion: 'vender', token: tok, pedidoId: 'P9999', items: [{ id: 'p1', cantidad: 1 }] }).error || '') && stockDe('p1') === stockPed - 2)
+esperar('ventasDelDia muestra el cliente y el pedido', post({ accion: 'ventasDelDia', token: tok }).ventas.some((v) => v.pedidoId === ped1 && v.cliente))
+post({ accion: 'anularVenta', token: tok, ventaId: ventaPed })
+esperar('anular la venta de un pedido lo deja otra vez pendiente', (() => { const p = pedidoDe(ped1); return p.estado === 'pendiente' && !p.ventaId })())
+esperar('cancelar pedido', post({ accion: 'cancelarPedido', token: tok, id: pa.pedidoId }).ok && pedidoDe(pa.pedidoId).estado === 'cancelado')
+esperar('cancelar dos veces falla', !post({ accion: 'cancelarPedido', token: tok, id: pa.pedidoId }).ok)
+esperar('un pedido cancelado no se cobra', /cancelado/.test(post({ accion: 'vender', token: tok, pedidoId: pa.pedidoId, items: [{ id: 'p2', cantidad: 1 }] }).error || ''))
+olvidarFrenos()
+for (let i = 0; i < 5; i++) pub({ nombre: 'Spam', celular: '955555555', items: [{ id: 'p2', cantidad: 1 }] })
+esperar('freno de pedidos por celular', /varios pedidos/.test(pub({ nombre: 'Spam', celular: '955555555', items: [{ id: 'p2', cantidad: 1 }] }).error || ''))
+olvidarFrenos()
+for (let i = 0; i < 10; i++) pub({ nombre: 'X', celular: '9000000' + String(i).padStart(2, '0'), items: [{ id: 'p2', cantidad: 1 }] })
+esperar('freno global de pedidos por minuto', /muchos pedidos/.test(pub({ nombre: 'X', celular: '911111111', items: [{ id: 'p2', cantidad: 1 }] }).error || ''))
+olvidarFrenos()
+// Ventas de una planilla anterior (sin las columnas del cliente): se agregan solas al vender.
+hojas.Ventas.d = hojas.Ventas.d.map((f) => f.slice(0, 14))
+r = post({ accion: 'vender', token: tok, items: [{ id: 'p2', cantidad: 1 }], cliente: 'Carla', contacto: 'carla@x.cl' })
+esperar('hoja Ventas vieja recibe las columnas nuevas al vender', r.ok && (() => {
+  const cab = hojas.Ventas.d[0], fila = hojas.Ventas.d.find((f) => f[0] === r.ventaId)
+  return cab.includes('pedido_id') && fila[cab.indexOf('cliente')] === 'Carla' && fila[cab.indexOf('contacto')] === 'carla@x.cl'
+})(), JSON.stringify(hojas.Ventas.d[0]))
+
 // versión del contrato e idempotencia
-esperar('toda respuesta anuncia la versión', post({ accion: 'sesion', token: tok }).srv === 2 && T.doGet({ parameter: {} }).srv === 2)
+esperar('toda respuesta anuncia la versión', post({ accion: 'sesion', token: tok }).srv === 3 && T.doGet({ parameter: {} }).srv === 3)
 const kIdem = (u, k) => 'idem_' + crypto.createHash('sha256').update(`${u}:${k}`).digest('base64').replace(/\+/g, '-').replace(/\//g, '_')
 const idem = 'prueba-idem-0123456789'
 const stockIdem = stockDe('p1')
@@ -234,7 +298,9 @@ esperar('vendedor no puede descuento', !post({ accion: 'vender', token: tv, item
 for (const a of ['ajustarStock', 'anularVenta', 'reporte', 'usuarios', 'guardarUsuario', 'guardarConfig', 'guardarProducto', 'subirImagen']) {
   esperar(`vendedor sin permiso: ${a}`, /permiso/.test(post({ accion: a, token: tv }).error || ''))
 }
-esperar('ventasDelDia del vendedor solo propias', post({ accion: 'ventasDelDia', token: tv }).ventas.every((v) => v.usuario === 'caja'))
+esperar('vendedor ve y cancela pedidos', post({ accion: 'pedidos', token: tv }).ok &&
+  post({ accion: 'cancelarPedido', token: tv, id: ped1 }).ok)
+esperar('ventasDelDia del vendedor solo propias',post({ accion: 'ventasDelDia', token: tv }).ventas.every((v) => v.usuario === 'caja'))
 // ascender y luego degradar: la sesión debe caer
 post({ accion: 'guardarUsuario', token: tok, usuario: { usuario: 'caja', nombre: 'Caja', rol: 'admin', activo: true } })
 esperar('cambiar rol cierra la sesión del afectado', post({ accion: 'sesion', token: tv }).sesion === false)
