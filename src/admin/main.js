@@ -2,9 +2,10 @@ import '../styles/tokens.css'
 import '../styles/base.css'
 import '../styles/admin.css'
 import '../styles/efectos.css'
+import '../styles/nav.css'
 
 import { protegerMarco } from '../lib/marco.js'
-import { html, pintar, $, $$ } from '../lib/dom.js'
+import { html, crudo, pintar, $, $$ } from '../lib/dom.js'
 import { aviso, conBoton, panelError, sacudir, vigilarRed } from '../lib/efectos.js'
 import { icono } from '../lib/iconos.js'
 import { token, onSesionCaducada, onActividad } from '../lib/api.js'
@@ -24,19 +25,25 @@ protegerMarco()
 /* Cada pestaña declara qué roles la ven. El backend vuelve a comprobarlo
    en cada acción: ocultar un botón aquí es comodidad, no seguridad. */
 const VISTAS = [
-  { id: 'vender', titulo: 'Vender', roles: ['admin', 'vendedor'], vista: vender },
-  { id: 'pedidos', titulo: 'Pedidos', roles: ['admin', 'vendedor'], vista: pedidos },
-  { id: 'inventario', titulo: 'Inventario', roles: ['admin'], vista: inventarioVista },
-  { id: 'reportes', titulo: 'Reportes', roles: ['admin'], vista: reportes },
-  { id: 'etiquetas', titulo: 'Etiquetas', roles: ['admin'], vista: etiquetas },
-  { id: 'usuarios', titulo: 'Usuarios', roles: ['admin'], vista: usuarios },
-  { id: 'ajustes', titulo: 'Ajustes', roles: ['admin', 'vendedor'], vista: ajustes },
+  { id: 'vender', icono: 'carro', titulo: 'Vender', roles: ['admin', 'vendedor'], vista: vender },
+  { id: 'pedidos', icono: 'pedidos', titulo: 'Pedidos', roles: ['admin', 'vendedor'], vista: pedidos },
+  { id: 'inventario', icono: 'inventario', titulo: 'Inventario', roles: ['admin'], vista: inventarioVista },
+  { id: 'reportes', icono: 'reportes', titulo: 'Reportes', roles: ['admin'], vista: reportes },
+  { id: 'etiquetas', icono: 'etiquetas', titulo: 'Etiquetas', roles: ['admin'], vista: etiquetas },
+  { id: 'usuarios', icono: 'usuarios', titulo: 'Usuarios', roles: ['admin'], vista: usuarios },
+  { id: 'ajustes', icono: 'ajustes', titulo: 'Ajustes', roles: ['admin', 'vendedor'], vista: ajustes },
 ]
+
+/* Cinta inferior del celular: hasta 5 secciones van sueltas; si hay más, las
+   primeras 4 y «Más», que abre una hoja con el resto (en escritorio no cambia nada). */
+const TOPE_CINTA = 5
+const MAX_CINTA = 4
 
 let limpiarVista = null
 
 function pantallaLogin(msg = '') {
   limpiarVista?.(); limpiarVista = null
+  document.body.classList.remove('con-nav')
   pintar($('#app'), html`
     <main class="login">
       <form class="login-caja" id="form-login">
@@ -106,7 +113,12 @@ function pintarShell() {
         <span>Panel${demo ? html` <span class="etiqueta etiqueta-aviso">DEMO</span>` : ''}</span>
       </div>
       <nav class="pestanas" aria-label="Secciones">
-        ${visibles.map((v) => html`<a href="#${v.id}" data-vista="${v.id}">${v.titulo}</a>`)}
+        ${visibles.map((v, i) => html`<a class="pestana" href="#${v.id}" data-vista="${v.id}" ${crudo(visibles.length > TOPE_CINTA && i >= MAX_CINTA ? 'data-mas' : '')}>
+          <span class="pestana-icono">${icono[v.icono]}</span><span class="pestana-texto">${v.titulo}</span><span class="pestana-linea" aria-hidden="true"></span>
+        </a>`)}
+        ${visibles.length > TOPE_CINTA ? html`<button class="pestana pestana-mas" type="button" id="abrir-mas" aria-haspopup="dialog">
+          <span class="pestana-icono">${icono.puntos}</span><span class="pestana-texto">Más</span><span class="pestana-linea" aria-hidden="true"></span>
+        </button>` : ''}
       </nav>
       <div class="barra-usuario">
         ${sesion.debeCambiar ? '' : html`<a class="btn btn-primario btn-chico ir-catalogo" href="${import.meta.env.BASE_URL}#caja" aria-label="Vender en el catálogo" title="El catálogo como punto de venta: escanea, agrega y finaliza la venta">${icono.carro}<span>Vender en el catálogo</span></a>`}
@@ -115,7 +127,16 @@ function pintarShell() {
         <button class="btn btn-borde btn-chico" type="button" id="salir">${icono.salir} Salir</button>
       </div>
     </header>
-    <main class="contenido" id="vista"></main>`)
+    <main class="contenido" id="vista"></main>
+    ${visibles.length > TOPE_CINTA ? html`<dialog class="hoja-mas" id="dlg-mas" aria-label="Más secciones">
+      <span class="hoja-mas-asa" aria-hidden="true"></span>
+      <nav class="hoja-mas-lista" aria-label="Más secciones">
+        ${visibles.slice(MAX_CINTA).map((v) => html`<a href="#${v.id}" data-vista="${v.id}">${icono[v.icono]}<span>${v.titulo}</span></a>`)}
+      </nav>
+    </dialog>` : ''}`)
+  document.body.classList.add('con-nav')
+  $('#abrir-mas')?.addEventListener('click', () => $('#dlg-mas').showModal())
+  $('#dlg-mas')?.addEventListener('click', (e) => { if (e.target.closest('a')) e.currentTarget.close() })
   $('#salir').addEventListener('click', salir)
   $('#reiniciar-demo')?.addEventListener('click', async (e) => {
     if (!confirm('¿Borrar las ventas y cambios de prueba de este navegador?')) return
@@ -131,7 +152,8 @@ function irA(id) {
   const v = sesion.debeCambiar ? VISTAS.find((x) => x.id === 'ajustes')
     : VISTAS.find((x) => x.id === id && x.roles.includes(sesion.rol)) || VISTAS[0]
   if (location.hash.slice(1) !== v.id) history.replaceState(null, '', `#${v.id}`)
-  $$('.pestanas a').forEach((a) => a.setAttribute('aria-current', String(a.dataset.vista === v.id)))
+  $$('.pestanas a, .hoja-mas-lista a').forEach((a) => a.setAttribute('aria-current', String(a.dataset.vista === v.id)))
+  $('#abrir-mas')?.setAttribute('aria-current', String(!!$(`.pestanas a[data-mas][data-vista="${v.id}"]`)))
   limpiarVista?.()
   // Contenedor NUEVO por vista: las vistas cuelgan listeners delegados de su
   // raíz, y si se reutilizara la misma, los de "Vender" seguirían vivos en

@@ -1,0 +1,80 @@
+/* ============================================================
+   CINTA DE NAVEGACIÓN INFERIOR — solo en el celular (hasta 720 px).
+
+   Mismo diseño que FinanzasMaker: íconos de trazo, etiqueta corta debajo,
+   píldora detrás del ícono activo, barra fija al alcance del pulgar. En
+   pantallas anchas el panel conserva sus pestañas de arriba y la tienda no
+   muestra nada de esto. Se importa DESPUÉS de tienda.css/admin.css para
+   ganar a sus reglas de móvil.
+   ============================================================ */
+
+/* Escritorio: lo propio de la cinta no existe. */
+.pestana-icono, .pestana-linea, .pestana-mas, .pestanas-tienda, .hoja-mas { display: none; }
+
+@media (max-width: 720px) {
+  /* backdrop-filter crea un bloque contenedor para los hijos `fixed`: con él
+     la cinta quedaría pegada a la cabecera y no a la pantalla. */
+  .barra, .barra-filtros, .cabecera { backdrop-filter: none; }
+
+  .pestanas {
+    position: fixed; inset: auto 0 0 0; z-index: var(--z-barra);
+    width: 100%; margin: 0; order: 0; flex: none;
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0;
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom));
+    background: var(--barra-fondo); backdrop-filter: blur(12px);
+    border-top: 1px solid var(--borde);
+    overflow: visible;
+  }
+  .pestanas .pestana, .pestanas-tienda .pestana {
+    position: relative; isolation: isolate; /* la píldora (z-index -1) queda detrás del ícono, no del fondo de la barra */
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    min-height: 56px; padding: 0 2px; border: 0; border-radius: 0; background: none;
+    color: var(--texto-tenue); font: inherit; font-size: var(--txt-micro); font-weight: 600;
+    text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  .pestanas .pestana[aria-current="true"] { background: none; color: var(--primario); }
+  .pestanas .pestana-texto { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pestana-icono { position: relative; display: inline-grid; place-items: center; transition: transform var(--rapido) var(--curva-suave); }
+  .pestana:active .pestana-icono { transform: scale(0.9); }
+  .pestana-icono .icono { width: 22px; height: 22px; }
+  .pestana-linea {
+    display: block; position: absolute; left: 50%; top: 6px; z-index: -1;
+    width: 56px; height: 30px; margin-left: -28px;
+    border-radius: var(--radio-pildora); background: var(--primario-tenue);
+    opacity: 0; transition: opacity var(--rapido) var(--curva-suave);
+  }
+  .pestana[aria-current="true"] .pestana-linea { opacity: 1; }
+  .pestanas-tienda, .pestanas .pestana-mas { display: flex; }
+  .pestanas-tienda { display: grid; }
+  .pestanas a[data-mas] { display: none; }
+  .pestana .insignia { top: -6px; right: -10px; }
+
+  /* Que lo último del contenido no quede tapado por la cinta. */
+  body.con-nav { padding-bottom: calc(var(--alto-nav) + env(safe-area-inset-bottom)); }
+
+  /* Avisos y barras flotantes suben sobre la cinta. */
+  body.con-nav #avisos, body.con-nav #avisos[popover] { bottom: calc(var(--alto-nav) + 12px + env(safe-area-inset-bottom)); }
+  body.con-nav.con-carro #avisos, body.con-nav.con-carro #avisos[popover] { bottom: calc(var(--alto-nav) + 96px + env(safe-area-inset-bottom)); }
+  body.con-nav .carro-flotante { bottom: calc(var(--alto-nav) + 12px + env(safe-area-inset-bottom)); }
+  body.con-nav .volver-arriba { bottom: calc(var(--alto-nav) + 86px + env(safe-area-inset-bottom)); }
+
+  /* Hoja «Más» del panel: sube desde abajo, sobre la cinta. */
+  .hoja-mas {
+    display: none; position: fixed; inset: auto 0 0 0; width: 100%; max-width: none; margin: 0;
+    padding: 8px 12px calc(16px + env(safe-area-inset-bottom));
+    border-radius: var(--radio) var(--radio) 0 0; max-height: 80dvh;
+  }
+  .hoja-mas[open] { display: block; }
+  .hoja-mas-asa { display: block; width: 40px; height: 4px; margin: 0 auto 8px; border-radius: 2px; background: var(--borde); }
+  .hoja-mas-lista { display: grid; gap: 4px; }
+  .hoja-mas-lista a {
+    display: flex; align-items: center; gap: 14px; min-height: var(--toque-min); padding: 8px 14px;
+    border-radius: var(--radio-sm); color: var(--texto); font-weight: 600; text-decoration: none;
+  }
+  .hoja-mas-lista a[aria-current="true"] { background: var(--primario-tenue-2); color: var(--primario); }
+  .hoja-mas-lista .icono { width: 22px; height: 22px; }
+}
+
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  .pestana-icono, .pestana-linea { transition: none; }
+}

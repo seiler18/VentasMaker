@@ -2,6 +2,7 @@ import '../styles/tokens.css'
 import '../styles/base.css'
 import '../styles/tienda.css'
 import '../styles/efectos.css'
+import '../styles/nav.css'
 
 import { protegerMarco } from '../lib/marco.js'
 import { html, crudo, pintar, $, $$ } from '../lib/dom.js'
@@ -304,6 +305,17 @@ function pintarTodo() {
       <svg class="icono" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
     </button>
 
+    ${enCaja ? '' : html`<nav class="pestanas pestanas-tienda" aria-label="Secciones de la tienda">
+      <button class="pestana" type="button" data-nav="inicio" aria-current="true">
+        <span class="pestana-icono">${icono.inicio}</span><span class="pestana-texto">Tienda</span><span class="pestana-linea" aria-hidden="true"></span></button>
+      <button class="pestana" type="button" data-nav="buscar">
+        <span class="pestana-icono">${icono.buscar}</span><span class="pestana-texto">Buscar</span><span class="pestana-linea" aria-hidden="true"></span></button>
+      <button class="pestana" type="button" data-nav="horario">
+        <span class="pestana-icono">${icono.reloj}</span><span class="pestana-texto">Horario</span><span class="pestana-linea" aria-hidden="true"></span></button>
+      <button class="pestana" type="button" data-nav="pedido">
+        <span class="pestana-icono">${icono.carro}<span class="insignia" id="nav-n" hidden>0</span></span><span class="pestana-texto">Pedido</span><span class="pestana-linea" aria-hidden="true"></span></button>
+    </nav>`}
+
     <dialog id="dlg-producto" class="hoja" aria-labelledby="dp-titulo"></dialog>
     <dialog id="dlg-carrito" class="dialogo-lateral hoja" aria-labelledby="dc-titulo"></dialog>
     <dialog id="dlg-horario" class="hoja" aria-labelledby="dh-titulo"></dialog>
@@ -483,6 +495,8 @@ function pintarResumenCarrito(destacar) {
   document.body.classList.toggle('con-carro', n > 0)
   $('#carro-n').textContent = n
   $('#carro-total').textContent = clp(total)
+  const navN = $('#nav-n')
+  if (navN) { navN.textContent = n; navN.hidden = n === 0 }
 
   if (destacar) {
     const li = $(`#panel-carrito .linea[data-id="${CSS.escape(destacar)}"]`)
@@ -872,6 +886,27 @@ function abrirHorario() {
    EVENTOS
    ============================================================ */
 
+/* Cinta inferior del celular (nav.css la oculta en pantallas anchas). */
+function engancharNav() {
+  const nav = $('.pestanas-tienda')
+  if (!nav) return
+  document.body.classList.add('con-nav')
+  const suave = () => (SIN_MOVIMIENTO.matches ? 'auto' : 'smooth')
+  const marcar = (nombre) => $$('.pestana', nav).forEach((b) => b.setAttribute('aria-current', String(b.dataset.nav === nombre)))
+  nav.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-nav]')
+    if (!b) return
+    const ir = b.dataset.nav
+    if (ir === 'inicio') { marcar('inicio'); window.scrollTo({ top: 0, behavior: suave() }) }
+    else if (ir === 'buscar') {
+      marcar('buscar')
+      $('.barra-filtros').scrollIntoView({ block: 'start', behavior: suave() })
+      $('#q').focus({ preventScroll: true })
+    } else if (ir === 'horario') abrirHorario()
+    else if (ir === 'pedido') abrirCarrito()
+  })
+}
+
 function engancharFiltros() {
   let espera
   $('#q').addEventListener('input', (e) => {
@@ -896,6 +931,7 @@ function engancharFiltros() {
     if (cat.getBoundingClientRect().top < 0) $('.barra-orden').scrollIntoView({ block: 'start', behavior: 'smooth' })
   }))
   $('#carro-flotante').addEventListener('click', abrirCarrito)
+  engancharNav()
   const arriba = $('#volver-arriba')
   arriba.addEventListener('click', () => window.scrollTo({ top: 0, behavior: SIN_MOVIMIENTO.matches ? 'auto' : 'smooth' }))
   let tic = false
