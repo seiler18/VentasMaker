@@ -47,6 +47,7 @@ const ss = {
   getId: () => 'hoja-simulada-123',
 }
 const cache = new Map(), props = new Map(), logs = []
+const drive = { files: [], permisos: [] }
 const G = {
   console: { log: (...a) => logs.push(a.join(' ')), error: (...a) => logs.push('ERR ' + a.join(' ')) },
   SpreadsheetApp: { getActive: () => ss, openById: () => ss, flush() {} },
@@ -75,7 +76,16 @@ const G = {
         .replace('HH', p.hour).replace('mm', p.minute).replace('ss', p.second)
     },
   },
-  UrlFetchApp: {}, MailApp: { sendEmail: (...a) => logs.push('MAIL ' + a[0]) }, DriveApp: {}, ScriptApp: {},
+  UrlFetchApp: {}, MailApp: { sendEmail: (...a) => logs.push('MAIL ' + a[0]) }, ScriptApp: {},
+  // Servicio avanzado de Drive v3. DriveApp no existe a propósito: con el
+  // scope drive.file no funciona y el backend no debe usarlo.
+  Drive: {
+    Files: {
+      create: (meta, blob) => { const f = { id: 'f' + drive.files.length, ...meta, bytes: blob?.getBytes() }; drive.files.push(f); return { id: f.id } },
+      get: (id) => { const f = drive.files.find((x) => x.id === id); if (!f) throw new Error('404'); return { id, trashed: !!f.trashed } },
+    },
+    Permissions: { create: (perm, id) => drive.permisos.push({ id, ...perm }) },
+  },
 }
 const ctx = vm.createContext(G)
 vm.runInContext(src + '\n;globalThis.__T = { doGet, doPost, onEdit, instalar, generarReportes, restablecerAdmin, HOJAS, agregar_ };', ctx)
@@ -263,6 +273,23 @@ esperar('clave de otro usuario no ve la respuesta ajena', (() => {
   return x.ok && !('secreto' in x) && !x.repetida
 })())
 esperar('idem mal formado se ignora (ejecuta normal)', post({ accion: 'ajustarStock', token: tok, idem: 'x', id: 'p2', delta: 0 }).ok)
+
+// fotos: Drive avanzado (drive.file), una carpeta propia, enlace público
+{
+  const webp = Buffer.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]).toString('base64')
+  const r1 = post({ accion: 'subirImagen', token: tok, tipo: 'image/webp', base64: webp })
+  esperar('subirImagen guarda en Drive y da URL lh3', r1.ok && /^https:\/\/lh3\.googleusercontent\.com\/d\/f\d+=w800$/.test(r1.url), JSON.stringify(r1))
+  const foto = drive.files.find((f) => r1.url?.includes(f.id))
+  const carpeta = drive.files.find((f) => f.mimeType === 'application/vnd.google-apps.folder')
+  esperar('la foto va dentro de la carpeta del script', foto && carpeta && foto.parents[0] === carpeta.id)
+  esperar('la foto queda visible con el enlace', drive.permisos.some((x) => x.id === foto?.id && x.type === 'anyone' && x.role === 'reader'))
+  post({ accion: 'subirImagen', token: tok, tipo: 'image/webp', base64: webp })
+  esperar('la segunda foto reutiliza la carpeta', drive.files.filter((f) => f.mimeType.includes('folder')).length === 1)
+  carpeta.trashed = true
+  post({ accion: 'subirImagen', token: tok, tipo: 'image/webp', base64: webp })
+  esperar('si borran la carpeta se crea otra', drive.files.filter((f) => f.mimeType.includes('folder')).length === 2)
+  esperar('tipo declarado falso rechazado', /no es una imagen/.test(post({ accion: 'subirImagen', token: tok, tipo: 'image/png', base64: webp }).error || ''))
+}
 
 // caché del catálogo
 T.doGet({ parameter: {} })

@@ -509,11 +509,16 @@ const ACCIONES = {
     if (!bytes.length || bytes.length > MAX_IMG_BYTES) falla_('Imagen vacía o demasiado grande');
     // Comprobación por "número mágico": que el tipo declarado sea verdad.
     if (!esImagen_(bytes, tipo)) falla_('El archivo no es una imagen válida');
-    const carpeta = carpetaImagenes_();
-    const archivo = carpeta.createFile(Utilities.newBlob(bytes, tipo, 'p_' + Date.now() + '.' + tipo.split('/')[1]));
-    archivo.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    registrar_(ses.usuario, 'subirImagen', archivo.getId());
-    return { url: 'https://lh3.googleusercontent.com/d/' + archivo.getId() + '=w800' };
+    // Servicio avanzado de Drive, no DriveApp: DriveApp exige permiso sobre
+    // todo el Drive de la dueña y el manifiesto solo concede drive.file (los
+    // archivos que crea este script). Con DriveApp la subida fallaba con
+    // "Error interno".
+    const nombre = 'p_' + Date.now() + '.' + tipo.split('/')[1];
+    const archivo = Drive.Files.create({ name: nombre, mimeType: tipo, parents: [carpetaImagenes_()] },
+                                       Utilities.newBlob(bytes, tipo, nombre));
+    Drive.Permissions.create({ role: 'reader', type: 'anyone' }, archivo.id);
+    registrar_(ses.usuario, 'subirImagen', archivo.id);
+    return { url: 'https://lh3.googleusercontent.com/d/' + archivo.id + '=w800' };
   },
 
   /* Con `id`, un pedido (el número que trae el cliente: "P1042", "p 1042" o
@@ -1271,13 +1276,17 @@ function esImagen_(bytes, tipo) {
   return false;
 }
 
+/* Id de la carpeta de fotos en el Drive de la dueña. La crea el script, así
+   que drive.file basta para escribir en ella. Si la borran, se crea otra. */
 function carpetaImagenes_() {
   const props = PropertiesService.getScriptProperties();
   const id = props.getProperty('CARPETA_IMG');
-  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { /* se recrea */ } }
-  const c = DriveApp.createFolder('VentasMaker — imágenes');
-  props.setProperty('CARPETA_IMG', c.getId());
-  return c;
+  if (id) {
+    try { if (!Drive.Files.get(id, { fields: 'id,trashed' }).trashed) return id; } catch (e) { /* se recrea */ }
+  }
+  const c = Drive.Files.create({ name: 'VentasMaker — imágenes', mimeType: 'application/vnd.google-apps.folder' });
+  props.setProperty('CARPETA_IMG', c.id);
+  return c.id;
 }
 
 function zona_() { return Session.getScriptTimeZone() || 'America/Santiago'; }

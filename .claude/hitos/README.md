@@ -17,7 +17,8 @@ No se duplica información entre ellos. Para añadir un hito, ver la skill
 
 | # | Fecha | Título | Estado |
 |---|---|---|---|
-| [0007](0007-modo-caja-y-pedidos-para-retiro.md) | 2026-09-28 | Modo caja en el catálogo y pedidos para retiro con número | falta redesplegar Code.gs v3 |
+| [0008](0008-subida-de-fotos-con-drive-avanzado.md) | 2026-10-05 | Subida de fotos con el servicio avanzado de Drive | falta redesplegar Code.gs + appsscript.json |
+| [0007](0007-modo-caja-y-pedidos-para-retiro.md) | 2026-09-28 | Modo caja en el catálogo y pedidos para retiro con número | completado (srv 3 en producción) |
 | [0006](0006-red-lenta-y-respuesta-visible.md) | 2026-09-28 | Apps Script lento: pintar sin esperarlo, reintentos seguros y respuesta visible | completado (redesplegado, srv 2) |
 | [0005](0005-estructura-y-skills-para-replicar.md) | 2026-09-26 | Estructura de nivel A y skills para replicar la tienda | completado |
 | [0004](0004-segunda-auditoria-e-historial-limpio.md) | 2026-09-26 | Segunda auditoría, historial limpio y redespliegue | completado |
