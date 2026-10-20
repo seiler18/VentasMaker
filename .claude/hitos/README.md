@@ -17,6 +17,7 @@ No se duplica información entre ellos. Para añadir un hito, ver la skill
 
 | # | Fecha | Título | Estado |
 |---|---|---|---|
+| [0009](0009-npm-audit-bloqueo-el-deploy-programado.md) | 2026-10-20 | `npm audit` volvió a bloquear el deploy programado | completado |
 | [0008](0008-subida-de-fotos-con-drive-avanzado.md) | 2026-10-05 | Subida de fotos con el servicio avanzado de Drive | falta redesplegar Code.gs + appsscript.json |
 | [0007](0007-modo-caja-y-pedidos-para-retiro.md) | 2026-09-28 | Modo caja en el catálogo y pedidos para retiro con número | completado (srv 3 en producción) |
 | [0006](0006-red-lenta-y-respuesta-visible.md) | 2026-09-28 | Apps Script lento: pintar sin esperarlo, reintentos seguros y respuesta visible | completado (redesplegado, srv 2) |
