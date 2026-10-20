@@ -1,0 +1,36 @@
+# Construye cada PR (el de Dependabot incluido) para saber si rompe algo ANTES de
+# fusionarlo. Es un workflow aparte, y no un `pull_request` metido en deploy.yml,
+# a propósito: el deploy comparte `concurrency: pages` con `cancel-in-progress`,
+# y un PR en ese grupo cancelaría una publicación real.
+# No publica nada ni escribe en el repo: solo lee el código.
+name: Verificar PR
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: verificar-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  construir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: npm
+      # Mismos pasos que el trabajo `build` de deploy.yml: sin scripts de
+      # instalación, auditoría y el build completo (check + pruebas).
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
+      - run: npm test
+      - run: npm run build
