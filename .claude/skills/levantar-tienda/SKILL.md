@@ -51,18 +51,21 @@ git clone --depth 1 git@github.com:seiler18/VentasMaker.git NuevaTienda
 cd NuevaTienda && rm -rf .git && git init -b main
 ```
 
-Borra lo que es de Ale ventas Alerce y no sirve a la nueva:
+Borra lo que es de la tienda de origen y no sirve a la nueva:
 `public/data/catalogo.json`, `public/img/*` (salvo que reuses iconos),
 `scraping/productos_treinta.json`, `.claude/hitos/*` (deja el `README.md` con
 la tabla vacía). El `.claude/skills/` se queda: son las skills de la tienda.
 
 ## 3. Personalizar — la lista completa
 
-Esto es todo lo que lleva datos de la tienda. Búscalo siempre con grep por si
-apareció algo nuevo:
+Esto es todo lo que lleva datos de la tienda. Antes de tocar nada, anota el
+nombre, el teléfono y el usuario del catálogo anterior de la tienda de origen
+(están en `src/config.js` y en la primera línea del `README.md`) y búscalos con
+grep por si apareció algo nuevo. Los valores se leen ahí y no se copian a esta
+skill: así no se publican con ella ni quedan obsoletos.
 
 ```bash
-git grep -n -i "ale ventas\|alerce\|monik10\|56950446613\|/VentasMaker/" -- ':!public/data' ':!scraping/*.json'
+git grep -n -i -e "<nombre>" -e "<teléfono>" -e "<usuario del catálogo>" -e "/VentasMaker/" -- ':!public/data' ':!scraping/*.json'
 ```
 
 | Archivo | Qué cambia |
